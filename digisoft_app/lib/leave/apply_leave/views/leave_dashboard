@@ -1,0 +1,208 @@
+import 'package:flutter/material.dart';
+
+class LeaveRequestScreen extends StatefulWidget {
+  const LeaveRequestScreen({super.key});
+
+  @override
+  State<LeaveRequestScreen> createState() => _LeaveRequestScreenState();
+}
+
+class _LeaveRequestScreenState extends State<LeaveRequestScreen> {
+  final _formKey = GlobalKey<FormState>();
+  final TextEditingController _reasonController = TextEditingController();
+  DateTime? _fromDate;
+  DateTime? _toDate;
+  String _selectedLeaveType = 'Annual Leave';
+  bool _isLoading = false;
+
+  final List<String> _leaveTypes = [
+    'Annual Leave',
+    'Sick Leave',
+    'Personal Leave',
+    'Emergency Leave',
+    'Maternity Leave',
+    'Paternity Leave',
+  ];
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Leave Request'),
+        centerTitle: true,
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(20),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Leave Type',
+                style: theme.textTheme.titleMedium!
+                    .copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _selectedLeaveType,
+                decoration: const InputDecoration(),
+                items: _leaveTypes.map((type) {
+                  return DropdownMenuItem(value: type, child: Text(type));
+                }).toList(),
+                onChanged: (value) =>
+                    setState(() => _selectedLeaveType = value!),
+              ),
+              const SizedBox(height: 20),
+
+              Text(
+                'Date Range',
+                style: theme.textTheme.titleMedium!
+                    .copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _selectFromDate(context),
+                      icon: const Icon(Icons.calendar_today_outlined),
+                      label: Text(
+                        _fromDate == null
+                            ? 'From Date'
+                            : '${_fromDate!.day}/${_fromDate!.month}/${_fromDate!.year}',
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _selectToDate(context),
+                      icon: const Icon(Icons.calendar_today_outlined),
+                      label: Text(
+                        _toDate == null
+                            ? 'To Date'
+                            : '${_toDate!.day}/${_toDate!.month}/${_toDate!.year}',
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              Text(
+                'Reason',
+                style: theme.textTheme.titleMedium!
+                    .copyWith(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              TextFormField(
+                controller: _reasonController,
+                decoration: const InputDecoration(
+                  hintText: 'Enter reason for leave...',
+                ),
+                maxLines: 3,
+                validator: (value) =>
+                    value == null || value.isEmpty ? 'Please enter reason' : null,
+              ),
+              const SizedBox(height: 30),
+
+              if (_fromDate != null && _toDate != null)
+                Center(
+                  child: Text(
+                    'Duration: ${_calculateDuration()} days',
+                    style: theme.textTheme.bodyLarge!.copyWith(
+                      color: theme.primaryColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 30),
+
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton( 
+                  onPressed: _isLoading ? null : _submitLeaveRequest,
+                  child: _isLoading
+                      ? const CircularProgressIndicator(
+                          color: Colors.white, strokeWidth: 2)
+                      : const Text('Submit Leave Request'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  int _calculateDuration() {
+    if (_fromDate == null || _toDate == null) return 0;
+    return _toDate!.difference(_fromDate!).inDays + 1;
+  }
+
+  Future<void> _selectFromDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() {
+        _fromDate = picked;
+        if (_toDate != null && _toDate!.isBefore(picked)) {
+          _toDate = null;
+        }
+      });
+    }
+  }
+
+  Future<void> _selectToDate(BuildContext context) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _fromDate ?? DateTime.now(),
+      firstDate: _fromDate ?? DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() => _toDate = picked);
+    }
+  }
+
+  Future<void> _submitLeaveRequest() async {
+    if (_formKey.currentState!.validate() &&
+        _fromDate != null &&
+        _toDate != null) {
+      setState(() => _isLoading = true);
+      await Future.delayed(const Duration(seconds: 2));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Leave request submitted successfully!'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        setState(() => _isLoading = false);
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please fill all fields'),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+}

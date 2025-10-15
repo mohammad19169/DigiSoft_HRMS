@@ -1,4 +1,4 @@
-import 'package:digisoft_app/leave/cancel_leave/screens/leave_dashboard';
+import 'package:digisoft_app/leave/apply_leave/views/leave_dashboard';
 import 'package:flutter/material.dart';
 
 class Dashboard extends StatelessWidget {
@@ -7,7 +7,6 @@ class Dashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      // backgroundColor: Colors.white,
       appBar: AppBar(
         title: Center(child: const Text('Digisoft', style: TextStyle(
             fontSize: 25, fontWeight: FontWeight.bold,color: Colors.black 
