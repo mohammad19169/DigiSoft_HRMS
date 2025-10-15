@@ -1,8 +1,17 @@
+import 'package:digisoft_app/Time/provider/attendance_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:digisoft_app/authentication/signin.dart';
+import 'package:provider/provider.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AttendanceProvider()),
+      ],
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -33,7 +42,7 @@ class MyApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const Signin(),
+      home:  LoginScreen(),
     );
   }
 }
