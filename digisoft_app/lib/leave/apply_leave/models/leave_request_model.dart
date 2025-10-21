@@ -1,23 +1,23 @@
-class LeaveRequestModel {
+class LeaveRequest {
   final int leaveTypeID;
   final String fromDate;
   final String toDate;
   final String reason;
   final String status;
   final int companyID;
-  final int totalDays;
+  final double totalDays;
   final String requestDate;
   final String duration;
   final int employeeID;
   final String createdBy;
   final String companyName;
 
-  LeaveRequestModel({
+  LeaveRequest({
     required this.leaveTypeID,
     required this.fromDate,
     required this.toDate,
     required this.reason,
-    this.status = 'Pending',
+    required this.status,
     required this.companyID,
     required this.totalDays,
     required this.requestDate,
@@ -27,18 +27,18 @@ class LeaveRequestModel {
     required this.companyName,
   });
 
-  Map<String, String> toFormData() {
+  Map<String, dynamic> toJson() {
     return {
-      'leaveTypeID': leaveTypeID.toString(),
+      'leaveTypeID': leaveTypeID,
       'fromDate': fromDate,
       'toDate': toDate,
       'reason': reason,
       'status': status,
-      'companyID': companyID.toString(),
-      'totalDays': totalDays.toString(),
+      'companyID': companyID,
+      'totalDays': totalDays,
       'requestDate': requestDate,
       'duration': duration,
-      'employeeID': employeeID.toString(),
+      'employeeID': employeeID,
       'createdBy': createdBy,
       'CompanyName': companyName,
     };

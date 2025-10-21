@@ -7,7 +7,7 @@ class AttendanceProvider extends ChangeNotifier {
   String? _errorMessage;
   Position? _currentPosition;
   String _statusMessage = "Ready to mark attendance";
-  List<AttendanceRecord> _attendanceHistory = [];
+  final List<AttendanceRecord> _attendanceHistory = [];
 
   bool get isLoading => _isLoading;
   bool get attendanceMarked => _attendanceMarked;
