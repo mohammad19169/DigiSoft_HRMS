@@ -1,9 +1,9 @@
+import 'package:digisoft_app/Attendance/views/attendance.dart';
 import 'package:digisoft_app/leave/apply_leave/views/unified_apply_leave.dart';
 import 'package:digisoft_app/utils/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:digisoft_app/authentication/signin.dart';
-import 'package:digisoft_app/leave/apply_leave/views/apply_leave_screen.dart';
 import 'package:digisoft_app/utils/theme_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -66,7 +66,16 @@ class _DashboardState extends State<Dashboard>
         context,
         MaterialPageRoute(builder: (context) => const ApplyLeaveScreen()),
       );
-    } else {
+    }
+    else if (label == "Time") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AttendanceWithMapScreen(
+          ),
+        ),
+      );}
+     else {
       // Show coming soon for other features
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -122,37 +131,6 @@ class _DashboardState extends State<Dashboard>
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      // appBar: AppBar(
-      //   title: Text(
-      //     'Digisoft',
-      //     style: theme.appBarTheme.titleTextStyle,
-      //   ),
-      //   elevation: theme.appBarTheme.elevation ?? 1,
-      //   actions: [
-      //     // Theme Toggle Button
-      //     IconButton(
-      //       icon: Icon(
-      //         Provider.of<ThemeProvider>(context).isDarkMode
-      //             ? Icons.light_mode
-      //             : Icons.dark_mode,
-      //         color: theme.appBarTheme.foregroundColor,
-      //       ),
-      //       onPressed: () {
-      //         Provider.of<ThemeProvider>(context, listen: false).toggleTheme();
-      //       },
-      //       tooltip: 'Toggle Theme',
-      //     ),
-      //     // Logout Button
-      //     IconButton(
-      //       icon: Icon(
-      //         Icons.logout,
-      //         color: theme.appBarTheme.foregroundColor,
-      //       ),
-      //       onPressed: () => _confirmLogout(context),
-      //       tooltip: 'Logout',
-      //     ),
-      //   ],
-      // ),
       body: SafeArea(
         child: Column(
           children: [
@@ -163,12 +141,6 @@ class _DashboardState extends State<Dashboard>
               height: 50,
               fit: BoxFit.contain,
             ),
-            // Text(
-            //   'INFOSTRUCTURE FOR THE NATION',
-            //   style: theme.textTheme.bodySmall?.copyWith(
-            //     color: theme.textTheme.bodySmall?.color?.withOpacity(0.7),
-            //   ),
-            // ),
             const SizedBox(height: 20),
 
             // Animated Tab Switch
@@ -347,8 +319,8 @@ class _DashboardState extends State<Dashboard>
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 3,
           childAspectRatio: 0.9,
-          crossAxisSpacing: 14,
-          mainAxisSpacing: 14,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
         ),
         itemBuilder: (context, index) {
           final item = menuItems[index];
@@ -361,10 +333,10 @@ class _DashboardState extends State<Dashboard>
                 borderRadius: BorderRadius.circular(18),
                 boxShadow: [
                   BoxShadow(
-                    color: theme.shadowColor.withOpacity(0.1),
-                    blurRadius: 6,
-                    spreadRadius: 2,
-                    offset: const Offset(0, 3),
+                    color: theme.shadowColor.withOpacity(0.05),
+                    blurRadius: 3,
+                    spreadRadius: 1,
+                    offset: const Offset(0, 2),
                   ),
                 ],
               ),

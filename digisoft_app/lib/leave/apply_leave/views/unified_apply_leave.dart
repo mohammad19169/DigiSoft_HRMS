@@ -488,7 +488,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
               'LEAVE TYPE',
               style: TextStyle(
                 color: colorScheme.onPrimary,
-                fontSize: 16,
+                fontSize: 13,
                 fontWeight: FontWeight.bold,
                 letterSpacing: 1.2,
               ),
@@ -537,7 +537,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
           style: TextStyle(
             color: isSelected ? colorScheme.onPrimary : colorScheme.onSurface,
             fontWeight: FontWeight.bold,
-            fontSize: 15,
+            fontSize: 13,
           ),
         ),
       ),
@@ -610,7 +610,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
         Text(
           'Reason',
           style: TextStyle(
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: colorScheme.onSurface,
           ),
@@ -619,7 +619,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 15),
           decoration: BoxDecoration(
-            border: Border.all(color: colorScheme.outline),
+            border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
             borderRadius: BorderRadius.circular(10),
           ),
           child: DropdownButtonHideUnderline(
@@ -669,7 +669,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
                       decoration: BoxDecoration(
-                        border: Border.all(color: colorScheme.outline),
+                        border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -712,7 +712,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
                       decoration: BoxDecoration(
-                        border: Border.all(color: colorScheme.outline),
+                        border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -757,7 +757,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
                       decoration: BoxDecoration(
-                        border: Border.all(color: colorScheme.outline),
+                        border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
@@ -786,7 +786,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
               child: Container(
                 padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
-                  border: Border.all(color: colorScheme.outline),
+                  border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Column(
@@ -843,54 +843,6 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
     );
   }
 
-  Widget _buildAttachDocumentsSection(ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Attach Documents',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface,
-          ),
-        ),
-        const SizedBox(height: 15),
-        Container(
-          padding: const EdgeInsets.all(30),
-          decoration: BoxDecoration(
-            border: Border.all(
-              color: colorScheme.outline,
-              style: BorderStyle.solid,
-              width: 2,
-            ),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _buildAttachButton(
-                icon: Icons.image,
-                color: colorScheme.primary,
-                onTap: () {
-                  // Handle image picker
-                },
-              ),
-              Container(width: 1, height: 50, color: colorScheme.outline),
-              _buildAttachButton(
-                icon: Icons.camera_alt,
-                color: Colors.deepOrange,
-                onTap: () {
-                  // Handle camera
-                },
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildAttachButton({
     required IconData icon,
     required Color color,
@@ -926,38 +878,6 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
     );
   }
 
-  Widget _buildAttachmentsSection(ColorScheme colorScheme) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Attachments',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: colorScheme.onSurface,
-          ),
-        ),
-        const SizedBox(height: 10),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            border: Border.all(color: colorScheme.outline),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Text(
-            'No attachments',
-            style: TextStyle(
-              color: colorScheme.onSurface.withOpacity(0.5),
-              fontSize: 14,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
   Widget _buildCommentSection(ColorScheme colorScheme) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -965,7 +885,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
         Text(
           'Comment',
           style: TextStyle(
-            fontSize: 16,
+            fontSize: 14,
             fontWeight: FontWeight.w600,
             color: colorScheme.onSurface,
           ),
