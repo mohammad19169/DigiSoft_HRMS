@@ -9,7 +9,7 @@ void main() {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        ChangeNotifierProvider(create: (_) => AttendanceProvider()),
+        //ChangeNotifierProvider(create: (_) => AttendanceProvider()),
         // ChangeNotifierProvider(create: (_) => LeaveProvider()),
       ],
       child: const MyApp(),

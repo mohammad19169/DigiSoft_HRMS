@@ -43,10 +43,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
     'Other',
   ];
 
-  double get _calculatedDays {
-    if (_fromDate == null || _toDate == null) return 0.0;
-    return _leaveService.calculateTotalDays(_fromDate!, _toDate!, _selectedDuration);
-  }
+ double _calculatedDays = 0;
 
   @override
   void initState() {
@@ -67,7 +64,7 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
       final List<LeaveBalance> leaveBalances = [];
       for (final leaveType in leaveTypes) {
         try {
-          final balance = await _leaveService.checkLeaveBalance(leaveType.leaveTypeID);
+          final balance = await _leaveService.checkLeaveBalance(leaveType.leaveTypeID,_selectedYear);
           leaveBalances.add(balance);
         } catch (e) {
           leaveBalances.add(LeaveBalance(
@@ -120,61 +117,61 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
     return existingBalance;
   }
 
-  Future<void> _selectFromDate() async {
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _fromDate ?? DateTime.now(),
-      firstDate: DateTime.now(),
-      lastDate: DateTime(DateTime.now().year + 1),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-              primary: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      setState(() {
-        _fromDate = picked;
-        if (_toDate != null && _toDate!.isBefore(_fromDate!)) {
-          _toDate = _fromDate;
-        }
-      });
-    }
-  }
+  // Future<void> _selectFromDate() async {
+  //   final DateTime? picked = await showDatePicker(
+  //     context: context,
+  //     initialDate: _fromDate ?? DateTime.now(),
+  //     firstDate: DateTime.now(),
+  //     lastDate: DateTime(DateTime.now().year + 1),
+  //     builder: (context, child) {
+  //       return Theme(
+  //         data: Theme.of(context).copyWith(
+  //           colorScheme: Theme.of(context).colorScheme.copyWith(
+  //             primary: Theme.of(context).colorScheme.primary,
+  //           ),
+  //         ),
+  //         child: child!,
+  //       );
+  //     },
+  //   );
+  //   if (picked != null) {
+  //     setState(() {
+  //       _fromDate = picked;
+  //       if (_toDate != null && _toDate!.isBefore(_fromDate!)) {
+  //         _toDate = _fromDate;
+  //       }
+  //     });
+  //   }
+  // }
 
-  Future<void> _selectToDate() async {
-    if (_fromDate == null) {
-      _showWarningSnackBar('Please select from date first');
-      return;
-    }
+  // Future<void> _selectToDate() async {
+  //   if (_fromDate == null) {
+  //     _showWarningSnackBar('Please select from date first');
+  //     return;
+  //   }
 
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: _toDate ?? _fromDate!,
-      firstDate: _fromDate!,
-      lastDate: DateTime(DateTime.now().year + 1),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: Theme.of(context).colorScheme.copyWith(
-              primary: Theme.of(context).colorScheme.primary,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-    if (picked != null) {
-      setState(() {
-        _toDate = picked;
-      });
-    }
-  }
+  //   final DateTime? picked = await showDatePicker(
+  //     context: context,
+  //     initialDate: _toDate ?? _fromDate!,
+  //     firstDate: _fromDate!,
+  //     lastDate: DateTime(DateTime.now().year + 1),
+  //     builder: (context, child) {
+  //       return Theme(
+  //         data: Theme.of(context).copyWith(
+  //           colorScheme: Theme.of(context).colorScheme.copyWith(
+  //             primary: Theme.of(context).colorScheme.primary,
+  //           ),
+  //         ),
+  //         child: child!,
+  //       );
+  //     },
+  //   );
+  //   if (picked != null) {
+  //     setState(() {
+  //       _toDate = picked;
+  //     });
+  //   }
+  // }
 
   Future<void> _submitLeaveRequest() async {
     if (!_formKey.currentState!.validate()) return;
@@ -647,175 +644,220 @@ class _ApplyLeaveScreenState extends State<ApplyLeaveScreen> {
   }
 
   Widget _buildDateDurationSection(ColorScheme colorScheme) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'From',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface,
-                    ),
+  return Column(
+    children: [
+      Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'From',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
                   ),
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: _selectFromDate,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _fromDate != null
-                                ? DateFormat('MMM dd').format(_fromDate!)
-                                : 'Oct 15',
-                            style: TextStyle(
-                              color: colorScheme.primary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                          ),
-                          Icon(Icons.edit, size: 16, color: colorScheme.primary),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _selectedDuration,
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.deepOrange,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: () => _showDurationPicker(colorScheme),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _selectedDuration,
-                            style: TextStyle(
-                              color: Colors.deepOrange,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                          ),
-                          Icon(Icons.edit, size: 16, color: Colors.deepOrange),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 15),
-        Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'To',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  GestureDetector(
-                    onTap: _selectToDate,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _toDate != null
-                                ? DateFormat('MMM dd').format(_toDate!)
-                                : 'Oct 15',
-                            style: TextStyle(
-                              color: colorScheme.primary,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 15,
-                            ),
-                          ),
-                          Icon(Icons.edit, size: 16, color: colorScheme.primary),
-                        ],
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 15),
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
-                  borderRadius: BorderRadius.circular(8),
                 ),
-                child: Column(
-                  children: [
-                    Text(
-                      'No Of Days',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: colorScheme.onSurface.withOpacity(0.7),
-                      ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: _selectFromDate,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                    const SizedBox(height: 5),
-                    Text(
-                      _calculatedDays.toStringAsFixed(1),
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: colorScheme.primary,
-                      ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _fromDate != null
+                              ? DateFormat('MMM dd').format(_fromDate!)
+                              : DateFormat('MMM dd').format(DateTime.now()),
+                          style: TextStyle(
+                            color: colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        Icon(Icons.edit, size: 16, color: colorScheme.primary),
+                      ],
                     ),
-                  ],
+                  ),
                 ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _selectedDuration,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.deepOrange,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: () => _showDurationPicker(colorScheme),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _selectedDuration,
+                          style: const TextStyle(
+                            color: Colors.deepOrange,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        const Icon(Icons.edit, size: 16, color: Colors.deepOrange),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+      const SizedBox(height: 15),
+      Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'To',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                GestureDetector(
+                  onTap: _selectToDate,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _toDate != null
+                              ? DateFormat('MMM dd').format(_toDate!)
+                              : DateFormat('MMM dd').format(_fromDate ?? DateTime.now()),
+                          style: TextStyle(
+                            color: colorScheme.primary,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 15,
+                          ),
+                        ),
+                        Icon(Icons.edit, size: 16, color: colorScheme.primary),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                border: Border.all(color: colorScheme.outline.withOpacity(0.3)),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    'No Of Days',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: colorScheme.onSurface.withOpacity(0.7),
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  Text(
+                    _calculatedDays.toStringAsFixed(1),
+                    style: TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.primary,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ],
-    );
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
+Future<void> _selectFromDate() async {
+  final picked = await showDatePicker(
+    context: context,
+    initialDate: _fromDate ?? DateTime.now(),
+    firstDate: DateTime.now(),
+    lastDate: DateTime(2100),
+  );
+  if (picked != null) {
+    setState(() {
+      _fromDate = picked;
+      if (_toDate == null || _toDate!.isBefore(_fromDate!)) {
+        _toDate = _fromDate;
+      }
+      _calculateDays();
+    });
   }
+}
+
+Future<void> _selectToDate() async {
+  if (_fromDate == null) {
+    _fromDate = DateTime.now();
+  }
+  final picked = await showDatePicker(
+    context: context,
+    initialDate: _toDate ?? _fromDate!,
+    firstDate: _fromDate!,
+    lastDate: DateTime(2100),
+  );
+  if (picked != null) {
+    setState(() {
+      _toDate = picked;
+      _calculateDays();
+    });
+  }
+}
+
+void _calculateDays() {
+  if (_fromDate != null && _toDate != null) {
+    _calculatedDays = _toDate!.difference(_fromDate!).inDays + 1;
+  } else {
+    _calculatedDays = 0;
+  }
+}
+
 
   void _showDurationPicker(ColorScheme colorScheme) {
     showModalBottomSheet(

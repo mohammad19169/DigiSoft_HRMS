@@ -3,6 +3,7 @@ import 'package:digisoft_app/services/attendance_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AttendanceWithMapScreen extends StatefulWidget {
   @override
@@ -20,12 +21,16 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
   String _shiftInfo = 'General Shift';
   Set<Circle> _circles = {};
   Set<Marker> _markers = {};
+  List<Map<String, dynamic>> _geofenceLocations = [];
+  bool _hasCheckedIn = false;
+  bool _hasCheckedOut = false;
 
   @override
   void initState() {
     super.initState();
     _updateCurrentTime();
-    _setupMapCircles();
+    _loadGeofenceLocations();
+    _checkTodayAttendance();
     
     // Update time every minute
     Timer.periodic(Duration(minutes: 1), (timer) {
@@ -40,31 +45,70 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
     });
   }
 
-  void _setupMapCircles() {
-    final allowedLocation = _attendanceService.getAllowedLocationInfo();
-    
-    _circles = {
-      Circle(
-        circleId: CircleId('allowed_area'),
-        center: LatLng(allowedLocation['latitude'], allowedLocation['longitude']),
-        radius: allowedLocation['radius'],
-        fillColor: Colors.green.withOpacity(0.3),
-        strokeColor: Colors.green,
-        strokeWidth: 2,
-      ),
-    };
+  Future<void> _checkTodayAttendance() async {
+    try {
+      final result = await _attendanceService.getTodayAttendance();
+      setState(() {
+        _hasCheckedIn = result['hasCheckedIn'] ?? false;
+        _hasCheckedOut = result['hasCheckedOut'] ?? false;
+        
+        // Set selected type based on attendance status
+        if (_hasCheckedIn && !_hasCheckedOut) {
+          _selectedType = AttendanceService.checkOutType;
+        } else {
+          _selectedType = AttendanceService.checkInType;
+        }
+      });
+    } catch (e) {
+      print('Error checking today attendance: $e');
+    }
+  }
 
-    _markers = {
-      Marker(
-        markerId: MarkerId('allowed_location'),
-        position: LatLng(allowedLocation['latitude'], allowedLocation['longitude']),
-        infoWindow: InfoWindow(
-          title: 'Attendance Area',
-          snippet: '20 meters radius',
-        ),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-      ),
-    };
+  Future<void> _loadGeofenceLocations() async {
+    try {
+      final locations = await _attendanceService.getGeofenceLocationsInfo();
+      setState(() {
+        _geofenceLocations = locations;
+      });
+      _setupMapCircles();
+    } catch (e) {
+      print('Error loading geofence locations: $e');
+    }
+  }
+
+  void _setupMapCircles() {
+    _circles.clear();
+    _markers.clear();
+
+    for (int i = 0; i < _geofenceLocations.length; i++) {
+      final location = _geofenceLocations[i];
+      if (location['isActive'] == true) {
+        _circles.add(
+          Circle(
+            circleId: CircleId('geofence_${location['locationID']}'),
+            center: LatLng(location['latitude'], location['longitude']),
+            radius: location['radius'],
+            fillColor: Colors.green.withOpacity(0.2),
+            strokeColor: Colors.green,
+            strokeWidth: 2,
+          ),
+        );
+
+        _markers.add(
+          Marker(
+            markerId: MarkerId('location_${location['locationID']}'),
+            position: LatLng(location['latitude'], location['longitude']),
+            infoWindow: InfoWindow(
+              title: location['locationName'],
+              snippet: '${location['radius']} meters radius',
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          ),
+        );
+      }
+    }
+
+    setState(() {});
   }
 
   Future<void> _getCurrentLocation() async {
@@ -72,12 +116,7 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
       // Check if location service is enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Please enable location services'),
-            backgroundColor: Colors.orange,
-          ),
-        );
+        _showImprovedAlertDialog('Location Service', 'Please enable location services', false);
         return;
       }
 
@@ -86,23 +125,13 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Location permissions are denied'),
-              backgroundColor: Colors.red,
-            ),
-          );
+          _showImprovedAlertDialog('Permission Denied', 'Location permissions are denied', false);
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Location permissions are permanently denied. Please enable them in app settings.'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        _showImprovedAlertDialog('Permission Required', 'Location permissions are permanently denied. Please enable them in app settings.', false);
         return;
       }
 
@@ -112,21 +141,20 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
       
       setState(() {
         _currentPosition = position;
-        _checkIfWithinRadius(position);
       });
 
-      // Move camera to show both user location and allowed area
+      // Move camera to show user location
       if (_mapController != null) {
         _mapController.animateCamera(
-          CameraUpdate.newLatLngBounds(
-            _getBounds(position),
-            50.0,
+          CameraUpdate.newLatLng(
+            LatLng(position.latitude, position.longitude),
           ),
         );
       }
 
-      // Add user marker
+      // Add/Update user marker
       setState(() {
+        _markers.removeWhere((marker) => marker.markerId.value == 'user_location');
         _markers.add(
           Marker(
             markerId: MarkerId('user_location'),
@@ -138,68 +166,56 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
       });
     } catch (e) {
       print('Error getting location: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error getting location: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showImprovedAlertDialog('Location Error', 'Error getting location: $e', false);
     }
   }
 
-  LatLngBounds _getBounds(Position userPosition) {
-    final allowedLocation = _attendanceService.getAllowedLocationInfo();
-    final southwest = LatLng(
-      userPosition.latitude < allowedLocation['latitude'] 
-          ? userPosition.latitude 
-          : allowedLocation['latitude'],
-      userPosition.longitude < allowedLocation['longitude'] 
-          ? userPosition.longitude 
-          : allowedLocation['longitude'],
-    );
-    final northeast = LatLng(
-      userPosition.latitude > allowedLocation['latitude'] 
-          ? userPosition.latitude 
-          : allowedLocation['latitude'],
-      userPosition.longitude > allowedLocation['longitude'] 
-          ? userPosition.longitude 
-          : allowedLocation['longitude'],
-    );
-    return LatLngBounds(southwest: southwest, northeast: northeast);
-  }
+  Future<void> _checkIfWithinAnyGeofence(Position position) async {
+    try {
+      // Use the stored geofence locations instead of fetching again
+      if (_geofenceLocations.isEmpty) {
+        await _loadGeofenceLocations();
+      }
 
-  void _checkIfWithinRadius(Position position) {
-    final allowedLocation = _attendanceService.getAllowedLocationInfo();
-    final distance = _attendanceService.calculateDistance(
-      allowedLocation['latitude'],
-      allowedLocation['longitude'],
-      position.latitude,
-      position.longitude,
-    );
-    
-    setState(() {
-      _isWithinRadius = distance <= allowedLocation['radius'];
-    });
+      // Convert to the format expected by the service
+      final List<dynamic> geofenceData = _geofenceLocations.map((loc) => {
+        'locationID': loc['locationID'],
+        'locationName': loc['locationName'],
+        'latitude': loc['latitude'],
+        'longitude': loc['longitude'],
+        'radiusInMeters': loc['radius'],
+        'isActive': loc['isActive'],
+      }).toList();
+      
+      final isWithin = await _attendanceService.isWithinAnyGeofenceLocation(
+        position.latitude,
+        position.longitude,
+        geofenceData,
+      );
+      
+      print('🔍 UI Check - Position: ${position.latitude}, ${position.longitude}');
+      print('🔍 UI Check - Is within radius: $isWithin');
+      print('🔍 UI Check - Active geofence locations: ${geofenceData.length}');
+      
+      setState(() {
+        _isWithinRadius = isWithin;
+      });
+    } catch (e) {
+      print('Error checking geofence: $e');
+      setState(() {
+        _isWithinRadius = false;
+      });
+    }
   }
 
   Future<void> _markAttendance() async {
     if (_currentPosition == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Unable to get your current location'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showImprovedAlertDialog('Location Error', 'Unable to get your current location', false);
       return;
     }
 
     if (!_isWithinRadius) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('You are not within the allowed attendance area'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showImprovedAlertDialog('Location Error', 'You are not within any allowed attendance area', false);
       return;
     }
 
@@ -208,6 +224,11 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
     });
 
     try {
+      print('🚀 Starting attendance marking...');
+      print('📍 Current Position: ${_currentPosition!.latitude}, ${_currentPosition!.longitude}');
+      print('📝 Attendance Type: $_selectedType');
+      print('✅ Is Within Radius (UI Check): $_isWithinRadius');
+      
       final result = await _attendanceService.markAttendanceWithCurrentData(
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
@@ -217,36 +238,139 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
             : 'Office Check Out',
       );
 
+      print('✅ Attendance Result: ${result['isSuccess']}');
+      print('📨 API Message: ${result['message']}');
+
       setState(() {
         _isLoading = false;
       });
 
+      // Show the exact API message in improved alert dialog
+      _showImprovedAlertDialog(
+        result['isSuccess'] == true ? 'SUCCESS' : 'ERROR',
+        result['message'] ?? 'Attendance marked',
+        result['isSuccess'] == true,
+      );
+
+      // Refresh attendance status after successful marking
       if (result['isSuccess'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('${_selectedType == AttendanceService.checkInType ? 'Check In' : 'Check Out'} successful!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(result['message'] ?? 'Failed to mark attendance'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        await _checkTodayAttendance();
       }
     } catch (e) {
+      print('❌ Attendance Error: $e');
+      
       setState(() {
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      
+      // Extract clean error message
+      String errorMessage = e.toString();
+      if (errorMessage.startsWith('Exception: ')) {
+        errorMessage = errorMessage.replaceFirst('Exception: ', '');
+      }
+      
+      _showImprovedAlertDialog('ERROR', errorMessage, false);
     }
+  }
+
+  void _showImprovedAlertDialog(String title, String message, bool isSuccess) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
+          contentPadding: EdgeInsets.zero,
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with status
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.symmetric(vertical: 24, horizontal: 20),
+                decoration: BoxDecoration(
+                  color: isSuccess ? Colors.green : Colors.red,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(20),
+                    topRight: Radius.circular(20),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Icon(
+                      isSuccess ? Icons.check_circle_outline : Icons.error_outline,
+                      color: Colors.white,
+                      size: 64,
+                    ),
+                    SizedBox(height: 12),
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 1.2,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+              
+              // Message section
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  children: [
+                    Text(
+                      message,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 24),
+                    
+                    // OK Button
+                    SizedBox(
+                      width: double.infinity,
+                      height: 50,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.of(context).pop();
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: isSuccess ? Colors.green : Colors.red,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          'OK',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: 1.1,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   void _onMapCreated(GoogleMapController controller) {
@@ -263,9 +387,25 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        elevation: 2,
+        title: Text(
+          'Mark Attendance',
+          style: TextStyle(
+            color: Colors.black87,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        centerTitle: true,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.black87),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: Column(
         children: [
-          // Header Section - Simplified
+          // Header Section
           Container(
             width: double.infinity,
             padding: EdgeInsets.all(16),
@@ -286,20 +426,22 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'TIME',
+                      'CURRENT TIME',
                       style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[700],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600],
+                        letterSpacing: 0.8,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    SizedBox(height: 6),
                     Text(
                       _currentTime,
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 32,
                         fontWeight: FontWeight.bold,
                         color: Colors.black,
+                        letterSpacing: 1.2,
                       ),
                     ),
                   ],
@@ -308,20 +450,50 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      'Shift',
+                      'SHIFT',
                       style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.grey[700],
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.grey[600],
+                        letterSpacing: 0.8,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    SizedBox(height: 6),
                     Text(
                       _shiftInfo,
                       style: TextStyle(
-                        fontSize: 16,
+                        fontSize: 18,
                         color: Colors.blue[700],
-                        fontWeight: FontWeight.w600,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    SizedBox(height: 8),
+                    // Attendance Status Indicator
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _hasCheckedIn 
+                            ? (_hasCheckedOut ? Colors.grey[200] : Colors.green[50])
+                            : Colors.orange[50],
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: _hasCheckedIn 
+                              ? (_hasCheckedOut ? Colors.grey : Colors.green)
+                              : Colors.orange,
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Text(
+                        _hasCheckedIn 
+                            ? (_hasCheckedOut ? 'Completed' : 'Checked In')
+                            : 'Not Checked In',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: _hasCheckedIn 
+                              ? (_hasCheckedOut ? Colors.grey[700] : Colors.green[700])
+                              : Colors.orange[700],
+                        ),
                       ),
                     ),
                   ],
@@ -330,26 +502,23 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
             ),
           ),
 
-          // Map Section - Takes most of the screen
+          // Map Section
           Expanded(
             child: Stack(
               children: [
                 GoogleMap(
                   onMapCreated: _onMapCreated,
                   initialCameraPosition: CameraPosition(
-                    target: LatLng(
-                      _attendanceService.getAllowedLocationInfo()['latitude'],
-                      _attendanceService.getAllowedLocationInfo()['longitude'],
-                    ),
+                    target: LatLng(24.8857391, 67.118721), // Default location
                     zoom: 16,
                   ),
                   markers: _markers,
                   circles: _circles,
                   myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
+                  myLocationButtonEnabled: false,
                   zoomControlsEnabled: false,
                   compassEnabled: true,
-                  mapToolbarEnabled: true,
+                  mapToolbarEnabled: false,
                 ),
 
                 // Location Status Overlay
@@ -358,33 +527,47 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                   left: 16,
                   right: 16,
                   child: Container(
-                    padding: EdgeInsets.all(12),
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
-                      color: _isWithinRadius ? Colors.green : Colors.orange,
-                      borderRadius: BorderRadius.circular(8),
+                      gradient: LinearGradient(
+                        colors: _isWithinRadius 
+                            ? [Colors.green[600]!, Colors.green[500]!]
+                            : [Colors.orange[600]!, Colors.orange[500]!],
+                      ),
+                      borderRadius: BorderRadius.circular(12),
                       boxShadow: [
                         BoxShadow(
                           color: Colors.black26,
-                          blurRadius: 8,
-                          offset: Offset(0, 2),
+                          blurRadius: 12,
+                          offset: Offset(0, 4),
                         ),
                       ],
                     ),
                     child: Row(
                       children: [
-                        Icon(
-                          _isWithinRadius ? Icons.check_circle : Icons.warning,
-                          color: Colors.white,
+                        Container(
+                          padding: EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(
+                            _isWithinRadius ? Icons.check_circle : Icons.location_off,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                         ),
-                        SizedBox(width: 8),
+                        SizedBox(width: 12),
                         Expanded(
                           child: Text(
                             _isWithinRadius 
-                                ? 'Within attendance area ✓'
-                                : 'Move to designated area (20m radius)',
+                                ? 'Within Attendance Area ✓'
+                                : 'Move to Designated Area',
                             style: TextStyle(
                               color: Colors.white,
-                              fontWeight: FontWeight.w500,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              letterSpacing: 0.3,
                             ),
                           ),
                         ),
@@ -399,9 +582,9 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                   right: 16,
                   child: FloatingActionButton(
                     onPressed: _getCurrentLocation,
-                    mini: true,
                     backgroundColor: Colors.white,
-                    child: Icon(Icons.my_location, color: Colors.blue),
+                    elevation: 4,
+                    child: Icon(Icons.my_location, color: Colors.blue[700], size: 28),
                   ),
                 ),
               ],
@@ -411,17 +594,18 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
           // Bottom Control Section
           Container(
             width: double.infinity,
-            padding: EdgeInsets.all(16),
+            padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: Colors.white,
-              border: Border(
-                top: BorderSide(color: Colors.grey[300]!),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
               ),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black12,
-                  blurRadius: 10,
-                  offset: Offset(0, -2),
+                  blurRadius: 20,
+                  offset: Offset(0, -4),
                 ),
               ],
             ),
@@ -429,20 +613,20 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
               children: [
                 // Attendance Type Selection
                 Container(
-                  padding: EdgeInsets.all(8),
+                  padding: EdgeInsets.all(6),
                   decoration: BoxDecoration(
                     color: Colors.grey[100],
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceAround,
                     children: [
-                      _buildTypeButton(AttendanceService.checkInType, 'CHECK IN'),
-                     // _buildTypeButton(AttendanceService.checkOutType, 'CHECK OUT'),
+                      _buildTypeButton(AttendanceService.checkInType, 'CHECK IN', Icons.login),
+                      SizedBox(width: 8),
+                      _buildTypeButton(AttendanceService.checkOutType, 'CHECK OUT', Icons.logout),
                     ],
                   ),
                 ),
-                SizedBox(height: 16),
+                SizedBox(height: 20),
                 
                 // Main Action Button
                 GestureDetector(
@@ -451,40 +635,57 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                     width: double.infinity,
                     height: 60,
                     decoration: BoxDecoration(
-                      color: _isWithinRadius 
-                          ? (_selectedType == AttendanceService.checkInType ? Colors.green : Colors.blue)
-                          : Colors.grey[400],
-                      borderRadius: BorderRadius.circular(12),
+                      gradient: _isWithinRadius 
+                          ? LinearGradient(
+                              colors: _selectedType == AttendanceService.checkInType 
+                                  ? [Colors.green[600]!, Colors.green[500]!]
+                                  : [Colors.blue[600]!, Colors.blue[500]!],
+                            )
+                          : null,
+                      color: !_isWithinRadius ? Colors.grey[300] : null,
+                      borderRadius: BorderRadius.circular(16),
                       boxShadow: _isWithinRadius ? [
                         BoxShadow(
-                          color: (_selectedType == AttendanceService.checkInType ? Colors.green : Colors.blue).withOpacity(0.3),
-                          blurRadius: 10,
-                          offset: Offset(0, 4),
+                          color: (_selectedType == AttendanceService.checkInType 
+                              ? Colors.green 
+                              : Colors.blue).withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: Offset(0, 6),
                         ),
                       ] : null,
                     ),
-                    child: Stack(
-                      children: [
-                        Center(
-                          child: _isLoading
-                              ? SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  ),
-                                )
-                              : Text(
-                                  'Touch to ${_selectedType == AttendanceService.checkInType ? 'CHECK IN' : 'CHECK OUT'}',
+                    child: Center(
+                      child: _isLoading
+                          ? SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            )
+                          : Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  _selectedType == AttendanceService.checkInType 
+                                      ? Icons.fingerprint 
+                                      : Icons.exit_to_app,
+                                  color: _isWithinRadius ? Colors.white : Colors.grey[500],
+                                  size: 28,
+                                ),
+                                SizedBox(width: 12),
+                                Text(
+                                  'MARK ${_selectedType == AttendanceService.checkInType ? 'CHECK IN' : 'CHECK OUT'}',
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                    color: _isWithinRadius ? Colors.white : Colors.grey[500],
+                                    letterSpacing: 1.2,
                                   ),
                                 ),
-                        ),
-                      ],
+                              ],
+                            ),
                     ),
                   ),
                 ),
@@ -496,7 +697,7 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
     );
   }
 
-  Widget _buildTypeButton(String type, String label) {
+  Widget _buildTypeButton(String type, String label, IconData icon) {
     bool isSelected = _selectedType == type;
     return Expanded(
       child: GestureDetector(
@@ -506,594 +707,41 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
           });
         },
         child: Container(
-          padding: EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+          padding: EdgeInsets.symmetric(vertical: 14, horizontal: 12),
           decoration: BoxDecoration(
-            color: isSelected 
-                ? (type == AttendanceService.checkInType ? Colors.green : Colors.blue)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(6),
+            gradient: isSelected 
+                ? LinearGradient(
+                    colors: type == AttendanceService.checkInType 
+                        ? [Colors.green[600]!, Colors.green[500]!]
+                        : [Colors.blue[600]!, Colors.blue[500]!],
+                  )
+                : null,
+            color: !isSelected ? Colors.transparent : null,
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: isSelected ? Colors.white : Colors.grey[600],
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                color: isSelected ? Colors.white : Colors.grey[600],
+                size: 20,
+              ),
+              SizedBox(width: 8),
+              Text(
+                label,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.grey[600],
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 }
-
-
-// import 'dart:async';
-
-// import 'package:digisoft_app/services/attendance_service.dart';
-// import 'package:flutter/material.dart';
-// import 'package:google_maps_flutter/google_maps_flutter.dart';
-// import 'package:geolocator/geolocator.dart';
-
-// class AttendanceWithMapScreen extends StatefulWidget {
-//   @override
-//   _AttendanceWithMapScreenState createState() => _AttendanceWithMapScreenState();
-// }
-
-// class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
-//   final AttendanceService _attendanceService = AttendanceService();
-//   late GoogleMapController _mapController;
-//   bool _isLoading = false;
-//   bool _isCheckingAttendance = false;
-//   bool _isWithinRadius = false;
-//   bool _hasCheckedIn = false;
-//   Position? _currentPosition;
-//   String _currentTime = '';
-//   String _shiftInfo = 'General Shift';
-//   String _attendanceMessage = '';
-//   Set<Circle> _circles = {};
-//   Set<Marker> _markers = {};
-
-//   @override
-//   void initState() {
-//     super.initState();
-//     _updateCurrentTime();
-//     _setupMapCircles();
-//     _checkTodayAttendance();
-    
-//     // Update time every minute
-//     Timer.periodic(Duration(minutes: 1), (timer) {
-//       _updateCurrentTime();
-//     });
-//   }
-
-//   void _updateCurrentTime() {
-//     final now = DateTime.now();
-//     setState(() {
-//       _currentTime = '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-//     });
-//   }
-
-//   void _setupMapCircles() {
-//     final allowedLocation = _attendanceService.getAllowedLocationInfo();
-    
-//     _circles = {
-//       Circle(
-//         circleId: CircleId('allowed_area'),
-//         center: LatLng(allowedLocation['latitude'], allowedLocation['longitude']),
-//         radius: allowedLocation['radius'],
-//         fillColor: Colors.green.withOpacity(0.3),
-//         strokeColor: Colors.green,
-//         strokeWidth: 2,
-//       ),
-//     };
-
-//     _markers = {
-//       Marker(
-//         markerId: MarkerId('allowed_location'),
-//         position: LatLng(allowedLocation['latitude'], allowedLocation['longitude']),
-//         infoWindow: InfoWindow(
-//           title: 'Attendance Area',
-//           snippet: '20 meters radius',
-//         ),
-//         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
-//       ),
-//     };
-//   }
-
-//   Future<void> _checkTodayAttendance() async {
-//     setState(() {
-//       _isCheckingAttendance = true;
-//     });
-
-//     try {
-//       final attendanceData = await _attendanceService.getTodayAttendance();
-      
-//       setState(() {
-//         _hasCheckedIn = attendanceData['hasCheckedIn'] ?? false;
-//         _attendanceMessage = attendanceData['message'] ?? '';
-        
-//         if (_hasCheckedIn) {
-//           final checkInTime = attendanceData['checkInTime'];
-//           if (checkInTime != null) {
-//             // Format the check-in time for display
-//             final dateTime = DateTime.parse(checkInTime);
-//             final formattedTime = '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
-//             _attendanceMessage = 'Already checked in at $formattedTime';
-//           }
-//         }
-//       });
-//     } catch (e) {
-//       print('Error checking today attendance: $e');
-//     } finally {
-//       setState(() {
-//         _isCheckingAttendance = false;
-//       });
-//     }
-//   }
-
-//   Future<void> _getCurrentLocation() async {
-//     try {
-//       // Check if location service is enabled
-//       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-//       if (!serviceEnabled) {
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           SnackBar(
-//             content: Text('Please enable location services'),
-//             backgroundColor: Colors.orange,
-//           ),
-//         );
-//         return;
-//       }
-
-//       // Check location permission
-//       LocationPermission permission = await Geolocator.checkPermission();
-//       if (permission == LocationPermission.denied) {
-//         permission = await Geolocator.requestPermission();
-//         if (permission == LocationPermission.denied) {
-//           ScaffoldMessenger.of(context).showSnackBar(
-//             SnackBar(
-//               content: Text('Location permissions are denied'),
-//               backgroundColor: Colors.red,
-//             ),
-//           );
-//           return;
-//         }
-//       }
-
-//       if (permission == LocationPermission.deniedForever) {
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           SnackBar(
-//             content: Text('Location permissions are permanently denied. Please enable them in app settings.'),
-//             backgroundColor: Colors.red,
-//           ),
-//         );
-//         return;
-//       }
-
-//       Position position = await Geolocator.getCurrentPosition(
-//         desiredAccuracy: LocationAccuracy.high,
-//       );
-      
-//       setState(() {
-//         _currentPosition = position;
-//         _checkIfWithinRadius(position);
-//       });
-
-//       // Move camera to show both user location and allowed area
-//       if (_mapController != null) {
-//         _mapController.animateCamera(
-//           CameraUpdate.newLatLngBounds(
-//             _getBounds(position),
-//             50.0,
-//           ),
-//         );
-//       }
-
-//       // Add user marker
-//       setState(() {
-//         _markers.add(
-//           Marker(
-//             markerId: MarkerId('user_location'),
-//             position: LatLng(position.latitude, position.longitude),
-//             infoWindow: InfoWindow(title: 'Your Location'),
-//             icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
-//           ),
-//         );
-//       });
-//     } catch (e) {
-//       print('Error getting location: $e');
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(
-//           content: Text('Error getting location: $e'),
-//           backgroundColor: Colors.red,
-//         ),
-//       );
-//     }
-//   }
-
-//   LatLngBounds _getBounds(Position userPosition) {
-//     final allowedLocation = _attendanceService.getAllowedLocationInfo();
-//     final southwest = LatLng(
-//       userPosition.latitude < allowedLocation['latitude'] 
-//           ? userPosition.latitude 
-//           : allowedLocation['latitude'],
-//       userPosition.longitude < allowedLocation['longitude'] 
-//           ? userPosition.longitude 
-//           : allowedLocation['longitude'],
-//     );
-//     final northeast = LatLng(
-//       userPosition.latitude > allowedLocation['latitude'] 
-//           ? userPosition.latitude 
-//           : allowedLocation['latitude'],
-//       userPosition.longitude > allowedLocation['longitude'] 
-//           ? userPosition.longitude 
-//           : allowedLocation['longitude'],
-//     );
-//     return LatLngBounds(southwest: southwest, northeast: northeast);
-//   }
-
-//   void _checkIfWithinRadius(Position position) {
-//     final allowedLocation = _attendanceService.getAllowedLocationInfo();
-//     final distance = _attendanceService.calculateDistance(
-//       allowedLocation['latitude'],
-//       allowedLocation['longitude'],
-//       position.latitude,
-//       position.longitude,
-//     );
-    
-//     setState(() {
-//       _isWithinRadius = distance <= allowedLocation['radius'];
-//     });
-//   }
-
-//   Future<void> _markAttendance() async {
-//     if (_hasCheckedIn) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(
-//           content: Text(_attendanceMessage),
-//           backgroundColor: Colors.orange,
-//         ),
-//       );
-//       return;
-//     }
-
-//     if (_currentPosition == null) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(
-//           content: Text('Unable to get your current location'),
-//           backgroundColor: Colors.red,
-//         ),
-//       );
-//       return;
-//     }
-
-//     if (!_isWithinRadius) {
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(
-//           content: Text('You are not within the allowed attendance area'),
-//           backgroundColor: Colors.red,
-//         ),
-//       );
-//       return;
-//     }
-
-//     setState(() {
-//       _isLoading = true;
-//     });
-
-//     try {
-//       final result = await _attendanceService.markAttendanceWithCurrentData(
-//         latitude: _currentPosition!.latitude,
-//         longitude: _currentPosition!.longitude,
-//         description: 'Office Check In',
-//       );
-
-//       setState(() {
-//         _isLoading = false;
-//       });
-
-//       if (result['isSuccess'] == true) {
-//         setState(() {
-//           _hasCheckedIn = true;
-//           _attendanceMessage = 'Checked in successfully at $_currentTime';
-//         });
-        
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           SnackBar(
-//             content: Text('Check In successful!'),
-//             backgroundColor: Colors.green,
-//           ),
-//         );
-//       } else {
-//         ScaffoldMessenger.of(context).showSnackBar(
-//           SnackBar(
-//             content: Text(result['message'] ?? 'Failed to mark attendance'),
-//             backgroundColor: Colors.red,
-//           ),
-//         );
-//       }
-//     } catch (e) {
-//       setState(() {
-//         _isLoading = false;
-//       });
-//       ScaffoldMessenger.of(context).showSnackBar(
-//         SnackBar(
-//           content: Text('Error: $e'),
-//           backgroundColor: Colors.red,
-//         ),
-//       );
-//     }
-//   }
-
-//   void _onMapCreated(GoogleMapController controller) {
-//     setState(() {
-//       _mapController = controller;
-//     });
-//     // Get location after map is created
-//     WidgetsBinding.instance.addPostFrameCallback((_) {
-//       _getCurrentLocation();
-//     });
-//   }
-
-//   @override
-//   Widget build(BuildContext context) {
-//     return Scaffold(
-//       backgroundColor: Colors.white,
-//       body: Column(
-//         children: [
-//           // Header Section - Simplified
-//           Container(
-//             width: double.infinity,
-//             padding: EdgeInsets.all(16),
-//             decoration: BoxDecoration(
-//               color: Colors.white,
-//               boxShadow: [
-//                 BoxShadow(
-//                   color: Colors.black12,
-//                   blurRadius: 10,
-//                   offset: Offset(0, 2),
-//                 ),
-//               ],
-//             ),
-//             child: Row(
-//               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-//               children: [
-//                 Column(
-//                   crossAxisAlignment: CrossAxisAlignment.start,
-//                   children: [
-//                     Text(
-//                       'TIME',
-//                       style: TextStyle(
-//                         fontSize: 14,
-//                         fontWeight: FontWeight.bold,
-//                         color: Colors.grey[700],
-//                       ),
-//                     ),
-//                     SizedBox(height: 4),
-//                     Text(
-//                       _currentTime,
-//                       style: TextStyle(
-//                         fontSize: 24,
-//                         fontWeight: FontWeight.bold,
-//                         color: Colors.black,
-//                       ),
-//                     ),
-//                   ],
-//                 ),
-//                 Column(
-//                   crossAxisAlignment: CrossAxisAlignment.end,
-//                   children: [
-//                     Text(
-//                       'Shift',
-//                       style: TextStyle(
-//                         fontSize: 14,
-//                         fontWeight: FontWeight.bold,
-//                         color: Colors.grey[700],
-//                       ),
-//                     ),
-//                     SizedBox(height: 4),
-//                     Text(
-//                       _shiftInfo,
-//                       style: TextStyle(
-//                         fontSize: 16,
-//                         color: Colors.blue[700],
-//                         fontWeight: FontWeight.w600,
-//                       ),
-//                     ),
-//                   ],
-//                 ),
-//               ],
-//             ),
-//           ),
-
-//           // Attendance Status
-//           if (_hasCheckedIn || _attendanceMessage.isNotEmpty)
-//             Container(
-//               width: double.infinity,
-//               padding: EdgeInsets.all(12),
-//               color: _hasCheckedIn ? Colors.orange[50] : Colors.blue[50],
-//               child: Row(
-//                 children: [
-//                   Icon(
-//                     _hasCheckedIn ? Icons.info : Icons.access_time,
-//                     color: _hasCheckedIn ? Colors.orange : Colors.blue,
-//                     size: 20,
-//                   ),
-//                   SizedBox(width: 8),
-//                   Expanded(
-//                     child: Text(
-//                       _attendanceMessage,
-//                       style: TextStyle(
-//                         color: _hasCheckedIn ? Colors.orange[800] : Colors.blue[800],
-//                         fontWeight: FontWeight.w500,
-//                       ),
-//                     ),
-//                   ),
-//                   if (_isCheckingAttendance)
-//                     SizedBox(
-//                       width: 16,
-//                       height: 16,
-//                       child: CircularProgressIndicator(
-//                         strokeWidth: 2,
-//                         valueColor: AlwaysStoppedAnimation<Color>(
-//                           _hasCheckedIn ? Colors.orange : Colors.blue
-//                         ),
-//                       ),
-//                     ),
-//                 ],
-//               ),
-//             ),
-
-//           // Map Section - Takes most of the screen
-//           Expanded(
-//             child: Stack(
-//               children: [
-//                 GoogleMap(
-//                   onMapCreated: _onMapCreated,
-//                   initialCameraPosition: CameraPosition(
-//                     target: LatLng(
-//                       _attendanceService.getAllowedLocationInfo()['latitude'],
-//                       _attendanceService.getAllowedLocationInfo()['longitude'],
-//                     ),
-//                     zoom: 16,
-//                   ),
-//                   markers: _markers,
-//                   circles: _circles,
-//                   myLocationEnabled: true,
-//                   myLocationButtonEnabled: true,
-//                   zoomControlsEnabled: false,
-//                   compassEnabled: true,
-//                   mapToolbarEnabled: true,
-//                 ),
-
-//                 // Location Status Overlay
-//                 Positioned(
-//                   top: 16,
-//                   left: 16,
-//                   right: 16,
-//                   child: Container(
-//                     padding: EdgeInsets.all(12),
-//                     decoration: BoxDecoration(
-//                       color: _isWithinRadius ? Colors.green : Colors.orange,
-//                       borderRadius: BorderRadius.circular(8),
-//                       boxShadow: [
-//                         BoxShadow(
-//                           color: Colors.black26,
-//                           blurRadius: 8,
-//                           offset: Offset(0, 2),
-//                         ),
-//                       ],
-//                     ),
-//                     child: Row(
-//                       children: [
-//                         Icon(
-//                           _isWithinRadius ? Icons.check_circle : Icons.warning,
-//                           color: Colors.white,
-//                         ),
-//                         SizedBox(width: 8),
-//                         Expanded(
-//                           child: Text(
-//                             _isWithinRadius 
-//                                 ? 'Within attendance area ✓'
-//                                 : 'Move to designated area (20m radius)',
-//                             style: TextStyle(
-//                               color: Colors.white,
-//                               fontWeight: FontWeight.w500,
-//                             ),
-//                           ),
-//                         ),
-//                       ],
-//                     ),
-//                   ),
-//                 ),
-
-//                 // Refresh Location Button
-//                 Positioned(
-//                   bottom: 100,
-//                   right: 16,
-//                   child: FloatingActionButton(
-//                     onPressed: _getCurrentLocation,
-//                     mini: true,
-//                     backgroundColor: Colors.white,
-//                     child: Icon(Icons.my_location, color: Colors.blue),
-//                   ),
-//                 ),
-//               ],
-//             ),
-//           ),
-
-//           // Bottom Control Section
-//           Container(
-//             width: double.infinity,
-//             padding: EdgeInsets.all(16),
-//             decoration: BoxDecoration(
-//               color: Colors.white,
-//               border: Border(top: BorderSide(color: Colors.grey[300]!)),
-//               boxShadow: [
-//                 BoxShadow(
-//                   color: Colors.black12,
-//                   blurRadius: 10,
-//                   offset: Offset(0, -2),
-//                 ),
-//               ],
-//             ),
-//             child: Column(
-//               children: [
-//                 // Main Action Button
-//                 GestureDetector(
-//                   onTap: _hasCheckedIn 
-//                       ? null 
-//                       : (_isWithinRadius && !_isLoading ? _markAttendance : null),
-//                   child: Container(
-//                     width: double.infinity,
-//                     height: 60,
-//                     decoration: BoxDecoration(
-//                       color: _hasCheckedIn
-//                           ? Colors.grey[400]
-//                           : (_isWithinRadius ? Colors.green : Colors.grey[400]),
-//                       borderRadius: BorderRadius.circular(12),
-//                       boxShadow: (_isWithinRadius && !_hasCheckedIn) ? [
-//                         BoxShadow(
-//                           color: Colors.green.withOpacity(0.3),
-//                           blurRadius: 10,
-//                           offset: Offset(0, 4),
-//                         ),
-//                       ] : null,
-//                     ),
-//                     child: Stack(
-//                       children: [
-//                         Center(
-//                           child: _isLoading
-//                               ? SizedBox(
-//                                   width: 20,
-//                                   height: 20,
-//                                   child: CircularProgressIndicator(
-//                                     strokeWidth: 2,
-//                                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-//                                   ),
-//                                 )
-//                               : Text(
-//                                   _hasCheckedIn 
-//                                       ? 'ALREADY CHECKED IN' 
-//                                       : 'TOUCH TO CHECK IN',
-//                                   style: TextStyle(
-//                                     fontSize: 18,
-//                                     fontWeight: FontWeight.bold,
-//                                     color: Colors.white,
-//                                   ),
-//                                 ),
-//                         ),
-//                       ],
-//                     ),
-//                   ),
-//                 ),
-//               ],
-//             ),
-//           ),
-//         ],
-//       ),
-//     );
-//   }
-// }

@@ -97,7 +97,7 @@ class LeaveService {
     }
   }
 
- Future<LeaveBalance> checkLeaveBalance(int leaveTypeID) async {
+ Future<LeaveBalance> checkLeaveBalance(int leaveTypeID,int _selectedYear) async {
   try {
     final prefs = await SharedPreferences.getInstance();
     final employeeID = prefs.getInt('employeeID') ?? 0;
@@ -113,7 +113,7 @@ class LeaveService {
     }
 
     final url = Uri.parse(
-      '${baseUrl}hrm/api/Leave/balance/$employeeID/$leaveTypeID/$companyID?year=$currentYear'
+      '${baseUrl}hrm/api/Leave/balance/$employeeID/$leaveTypeID/$companyID?year=$_selectedYear'
     );
 
     print('🌐 Balance API URL: $url');
