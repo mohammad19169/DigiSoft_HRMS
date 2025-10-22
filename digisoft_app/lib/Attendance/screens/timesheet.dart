@@ -459,13 +459,13 @@ class _AttendanceFilterScreenState extends State<AttendanceFilterScreen> {
                                     icon: Icons.access_time,
                                     label: 'Half Days',
                                     value: '${_statistics!['halfDays']}',
-                                    color: Colors.orange,
+                                    color: Colors.blue,
                                   ),
                                   _StatItem(
                                     icon: Icons.event_available,
                                     label: 'Leave',
                                     value: '${_statistics!['leaveDays']}',
-                                    color: Colors.blue,
+                                    color: Colors.orange,
                                   ),
                                 ],
                               ),
@@ -571,48 +571,60 @@ class _AttendanceCard extends StatelessWidget {
     final dayName = DateFormat.E().format(date);
     final dayNum = DateFormat.d().format(date);
     
+    // Debug the record to see what values we have
+    print('🎯 CARD DEBUG - Date: ${record['attendanceDate']}');
+    print('   statusName: ${record['statusName']}');
+    print('   isAbsent: ${record['isAbsent']}');
+    print('   isOnLeave: ${record['isOnLeave']}');
+    print('   isHalfDay: ${record['isHalfDay']}');
+    print('   isLate: ${record['isLate']}');
+    print('   actualStartTime: ${record['actualStartTime']}');
+    
     Color statusColor = Colors.green;
-    Widget statusDot = Container(
+    String statusText = 'Present';
+    bool isLate = false;
+
+    // Use statusName as the primary indicator since it's more reliable
+    final statusName = (record['statusName'] ?? '').toString().toLowerCase();
+    
+    if (statusName.contains('absent') || record['isAbsent'] == true) {
+      statusColor = Colors.red;
+      statusText = 'Absent';
+    } else if (statusName.contains('leave') || record['isOnLeave'] == true) {
+      statusColor = Colors.orange;
+      statusText = 'On Leave';
+    } else if (statusName.contains('half') || record['isHalfDay'] == true) {
+      statusColor = Colors.blue;
+      statusText = 'Half Day';
+    } else if (record['actualStartTime'] == null) {
+      // If no check-in time and no specific status, assume absent
+      statusColor = Colors.red;
+      statusText = 'Absent';
+    } else {
+      // If we reach here, it's a present day
+      statusColor = Colors.green;
+      statusText = 'Present';
+      
+      // Check if it's late (but keep the green color)
+      if (record['isLate'] == true || statusName.contains('late') || 
+          (record['lateBy'] != null && record['lateBy'].toString().isNotEmpty)) {
+        isLate = true;
+        // Don't change the color to orange, keep it green but we'll show "Late" text
+      }
+    }
+    
+    // Create status dot
+    final statusDot = Container(
       width: 8,
       height: 8,
       decoration: BoxDecoration(
-        color: Colors.green,
+        color: statusColor,
         shape: BoxShape.circle,
       ),
     );
-    
-    if (record['isAbsent'] == true) {
-      statusColor = Colors.red;
-      statusDot = Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: Colors.red,
-          shape: BoxShape.circle,
-        ),
-      );
-    } else if (record['isOnLeave'] == true) {
-      statusColor = Colors.orange;
-      statusDot = Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: Colors.orange,
-          shape: BoxShape.circle,
-        ),
-      );
-    } else if (record['isHalfDay'] == true) {
-      statusColor = Colors.blue;
-      statusDot = Container(
-        width: 8,
-        height: 8,
-        decoration: BoxDecoration(
-          color: Colors.blue,
-          shape: BoxShape.circle,
-        ),
-      );
-    }
-    
+
+    print('   → Final Status: $statusText, Color: $statusColor, Is Late: $isLate');
+
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
@@ -646,6 +658,14 @@ class _AttendanceCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 statusDot,
+                const SizedBox(height: 2),
+                Text(
+                  isLate ? 'Late' : statusText, // Show "Late" instead of "Present" if late
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: isLate ? Colors.orange : statusColor, // Late text in orange
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
             const SizedBox(width: 20),
@@ -722,7 +742,6 @@ class _AttendanceCard extends StatelessWidget {
       ),
     );
   }
-  
   void _showAttendanceDetails(BuildContext context, Map<String, dynamic> record) {
     final theme = Theme.of(context);
     
