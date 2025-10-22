@@ -1,4 +1,5 @@
-import 'package:digisoft_app/Attendance/views/attendance.dart';
+import 'package:digisoft_app/Attendance/screens/timesheet.dart';
+import 'package:digisoft_app/Times/views/attendance.dart';
 import 'package:digisoft_app/leave/apply_leave/views/unified_apply_leave.dart';
 import 'package:digisoft_app/utils/settings_screen.dart';
 import 'package:flutter/material.dart';
@@ -72,6 +73,14 @@ class _DashboardState extends State<Dashboard>
         context,
         MaterialPageRoute(
           builder: (context) => AttendanceWithMapScreen(
+          ),
+        ),
+      );}
+      else if (label == "Attendance") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AttendanceFilterScreen(
           ),
         ),
       );}
