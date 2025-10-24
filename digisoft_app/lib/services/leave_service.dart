@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:digisoft_app/global.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import '../leave/apply_leave/models/leave_type_model.dart';
@@ -7,7 +8,7 @@ import '../leave/apply_leave/models/leave_balance_model.dart';
 import '../leave/apply_leave/models/leave_request_model.dart';
 
 class LeaveService {
-  static const String baseUrl = 'http://stagging.digisoftproducts.com/';
+  static String baseUrl = baseURL;
 
   Future<List<LeaveType>> getLeaveTypes() async {
     try {
@@ -97,7 +98,7 @@ class LeaveService {
     }
   }
 
- Future<LeaveBalance> checkLeaveBalance(int leaveTypeID,int _selectedYear) async {
+ Future<LeaveBalance> checkLeaveBalance(int leaveTypeID,int selectedYear) async {
   try {
     final prefs = await SharedPreferences.getInstance();
     final employeeID = prefs.getInt('employeeID') ?? 0;
@@ -113,7 +114,7 @@ class LeaveService {
     }
 
     final url = Uri.parse(
-      '${baseUrl}hrm/api/Leave/balance/$employeeID/$leaveTypeID/$companyID?year=$_selectedYear'
+      '${baseUrl}hrm/api/Leave/balance/$employeeID/$leaveTypeID/$companyID?year=$selectedYear'
     );
 
     print('🌐 Balance API URL: $url');

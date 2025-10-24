@@ -1,0 +1,1 @@
+final String baseURL = 'http://stagging.digisoftproducts.com/';

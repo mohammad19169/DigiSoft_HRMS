@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class AttendanceFilterScreen extends StatefulWidget {
-  const AttendanceFilterScreen({Key? key}) : super(key: key);
+  const AttendanceFilterScreen({super.key});
 
   @override
   State<AttendanceFilterScreen> createState() => _AttendanceFilterScreenState();

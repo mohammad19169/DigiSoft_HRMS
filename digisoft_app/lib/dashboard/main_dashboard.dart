@@ -1,12 +1,14 @@
 import 'package:digisoft_app/Attendance/screens/timesheet.dart';
 import 'package:digisoft_app/Times/views/attendance.dart';
 import 'package:digisoft_app/leave/apply_leave/views/unified_apply_leave.dart';
+import 'package:digisoft_app/leave/leave_dashboard.dart';
 import 'package:digisoft_app/utils/settings_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:digisoft_app/authentication/signin.dart';
 import 'package:digisoft_app/utils/theme_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:digisoft_app/Payslips/payslip.dart';
 
 class Dashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -65,7 +67,7 @@ class _DashboardState extends State<Dashboard>
     if (label == "Leave") {
       Navigator.push(
         context,
-        MaterialPageRoute(builder: (context) => const ApplyLeaveScreen()),
+        MaterialPageRoute(builder: (context) => const LeaveMainScreen()),
       );
     }
     else if (label == "Time") {
@@ -82,6 +84,13 @@ class _DashboardState extends State<Dashboard>
         MaterialPageRoute(
           builder: (context) => AttendanceFilterScreen(
           ),
+        ),
+      );}
+      else if (label == "Payslip") {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PayslipScreen(),
         ),
       );}
      else {
@@ -303,7 +312,7 @@ class _DashboardState extends State<Dashboard>
             left: index == 0 ? const Radius.circular(30) : Radius.zero,
             right: index == 1 ? const Radius.circular(30) : Radius.zero,
           ),
-          border: Border.all(color: isSelected ? color : theme.dividerColor!),
+          border: Border.all(color: isSelected ? color : theme.dividerColor),
         ),
         child: Text(
           title,

@@ -3,27 +3,28 @@ import 'package:digisoft_app/services/attendance_service.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class AttendanceWithMapScreen extends StatefulWidget {
+  const AttendanceWithMapScreen({super.key});
+
   @override
   _AttendanceWithMapScreenState createState() => _AttendanceWithMapScreenState();
 }
 
 class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
-  final AttendanceService _attendanceService = AttendanceService();
   late GoogleMapController _mapController;
   bool _isLoading = false;
   bool _isWithinRadius = false;
   Position? _currentPosition;
   String _selectedType = AttendanceService.checkInType;
   String _currentTime = '';
-  String _shiftInfo = 'General Shift';
-  Set<Circle> _circles = {};
-  Set<Marker> _markers = {};
+  final String _shiftInfo = 'General Shift';
+  final Set<Circle> _circles = {};
+  final Set<Marker> _markers = {};
   List<Map<String, dynamic>> _geofenceLocations = [];
   bool _hasCheckedIn = false;
   bool _hasCheckedOut = false;
+  bool _hasGeofence = false;
 
   @override
   void initState() {
@@ -47,16 +48,16 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
 
   Future<void> _checkTodayAttendance() async {
     try {
-      final result = await _attendanceService.getTodayAttendance();
+      final result = await AttendanceService.getTodayAttendance();
       setState(() {
         _hasCheckedIn = result['hasCheckedIn'] ?? false;
         _hasCheckedOut = result['hasCheckedOut'] ?? false;
         
-        // Set selected type based on attendance status
+        // AUTO-SELECT the correct attendance type based on status
         if (_hasCheckedIn && !_hasCheckedOut) {
-          _selectedType = AttendanceService.checkOutType;
+          _selectedType = AttendanceService.checkOutType; // Auto-select checkout if checked in but not out
         } else {
-          _selectedType = AttendanceService.checkInType;
+          _selectedType = AttendanceService.checkInType; // Auto-select checkin if not checked in
         }
       });
     } catch (e) {
@@ -66,13 +67,17 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
 
   Future<void> _loadGeofenceLocations() async {
     try {
-      final locations = await _attendanceService.getGeofenceLocationsInfo();
+      final locations = await AttendanceService.getGeofenceLocationsInfo();
       setState(() {
         _geofenceLocations = locations;
+        _hasGeofence = locations.isNotEmpty;
       });
       _setupMapCircles();
     } catch (e) {
       print('Error loading geofence locations: $e');
+      setState(() {
+        _hasGeofence = false;
+      });
     }
   }
 
@@ -116,7 +121,7 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
       // Check if location service is enabled
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
-        _showImprovedAlertDialog('Location Service', 'Please enable location services', false);
+        _showAlertDialog('Location Service', 'Please enable location services', false);
         return;
       }
 
@@ -125,13 +130,13 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied) {
-          _showImprovedAlertDialog('Permission Denied', 'Location permissions are denied', false);
+          _showAlertDialog('Permission Denied', 'Location permissions are denied', false);
           return;
         }
       }
 
       if (permission == LocationPermission.deniedForever) {
-        _showImprovedAlertDialog('Permission Required', 'Location permissions are permanently denied. Please enable them in app settings.', false);
+        _showAlertDialog('Permission Required', 'Location permissions are permanently denied. Please enable them in app settings.', false);
         return;
       }
 
@@ -144,14 +149,12 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
       });
 
       // Move camera to show user location
-      if (_mapController != null) {
-        _mapController.animateCamera(
-          CameraUpdate.newLatLng(
-            LatLng(position.latitude, position.longitude),
-          ),
-        );
-      }
-
+      _mapController.animateCamera(
+        CameraUpdate.newLatLng(
+          LatLng(position.latitude, position.longitude),
+        ),
+      );
+    
       // Add/Update user marker
       setState(() {
         _markers.removeWhere((marker) => marker.markerId.value == 'user_location');
@@ -164,58 +167,52 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
           ),
         );
       });
+
+      // Check if within geofence
+      _checkIfWithinAnyGeofence(position);
     } catch (e) {
       print('Error getting location: $e');
-      _showImprovedAlertDialog('Location Error', 'Error getting location: $e', false);
+      _showAlertDialog('Location Error', 'Error getting location: $e', false);
     }
   }
 
   Future<void> _checkIfWithinAnyGeofence(Position position) async {
     try {
-      // Use the stored geofence locations instead of fetching again
       if (_geofenceLocations.isEmpty) {
         await _loadGeofenceLocations();
       }
 
-      // Convert to the format expected by the service
-      final List<dynamic> geofenceData = _geofenceLocations.map((loc) => {
-        'locationID': loc['locationID'],
-        'locationName': loc['locationName'],
-        'latitude': loc['latitude'],
-        'longitude': loc['longitude'],
-        'radiusInMeters': loc['radius'],
-        'isActive': loc['isActive'],
-      }).toList();
-      
-      final isWithin = await _attendanceService.isWithinAnyGeofenceLocation(
+      final isWithin = await AttendanceService.isWithinAnyGeofenceLocation(
         position.latitude,
         position.longitude,
-        geofenceData,
+        _geofenceLocations,
       );
       
       print('🔍 UI Check - Position: ${position.latitude}, ${position.longitude}');
       print('🔍 UI Check - Is within radius: $isWithin');
-      print('🔍 UI Check - Active geofence locations: ${geofenceData.length}');
+      print('🔍 UI Check - Active geofence locations: ${_geofenceLocations.length}');
+      print('🔍 UI Check - Has geofence configured: $_hasGeofence');
       
       setState(() {
-        _isWithinRadius = isWithin;
+        // If no geofence is configured, allow attendance from anywhere
+        _isWithinRadius = _hasGeofence ? isWithin : true;
       });
     } catch (e) {
       print('Error checking geofence: $e');
       setState(() {
-        _isWithinRadius = false;
+        _isWithinRadius = !_hasGeofence; // Allow if no geofence configured
       });
     }
   }
 
   Future<void> _markAttendance() async {
     if (_currentPosition == null) {
-      _showImprovedAlertDialog('Location Error', 'Unable to get your current location', false);
+      _showAlertDialog('Location Error', 'Unable to get your current location', false);
       return;
     }
 
     if (!_isWithinRadius) {
-      _showImprovedAlertDialog('Location Error', 'You are not within any allowed attendance area', false);
+      _showAlertDialog('Location Error', 'You are not within any allowed attendance area', false);
       return;
     }
 
@@ -228,11 +225,12 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
       print('📍 Current Position: ${_currentPosition!.latitude}, ${_currentPosition!.longitude}');
       print('📝 Attendance Type: $_selectedType');
       print('✅ Is Within Radius (UI Check): $_isWithinRadius');
+      print('📍 Has Geofence Configured: $_hasGeofence');
       
-      final result = await _attendanceService.markAttendanceWithCurrentData(
+      final result = await AttendanceService.markAttendanceWithCurrentData(
         latitude: _currentPosition!.latitude,
         longitude: _currentPosition!.longitude,
-        attendanceType: _selectedType,
+        attendanceType: _selectedType, // This will now pass checkout when selected
         description: _selectedType == AttendanceService.checkInType 
             ? 'Office Check In' 
             : 'Office Check Out',
@@ -245,8 +243,8 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
         _isLoading = false;
       });
 
-      // Show the exact API message in improved alert dialog
-      _showImprovedAlertDialog(
+      // Show the exact API message in alert dialog
+      _showAlertDialog(
         result['isSuccess'] == true ? 'SUCCESS' : 'ERROR',
         result['message'] ?? 'Attendance marked',
         result['isSuccess'] == true,
@@ -269,11 +267,11 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
         errorMessage = errorMessage.replaceFirst('Exception: ', '');
       }
       
-      _showImprovedAlertDialog('ERROR', errorMessage, false);
+      _showAlertDialog('ERROR', errorMessage, false);
     }
   }
 
-  void _showImprovedAlertDialog(String title, String message, bool isSuccess) {
+  void _showAlertDialog(String title, String message, bool isSuccess) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -405,7 +403,7 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
       ),
       body: Column(
         children: [
-          // Header Section
+          // Header Section - REMOVED the "Not Checked In" status button
           Container(
             width: double.infinity,
             padding: EdgeInsets.all(16),
@@ -468,34 +466,26 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                       ),
                     ),
                     SizedBox(height: 8),
-                    // Attendance Status Indicator
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: _hasCheckedIn 
-                            ? (_hasCheckedOut ? Colors.grey[200] : Colors.green[50])
-                            : Colors.orange[50],
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _hasCheckedIn 
-                              ? (_hasCheckedOut ? Colors.grey : Colors.green)
-                              : Colors.orange,
-                          width: 1.5,
-                        ),
-                      ),
-                      child: Text(
-                        _hasCheckedIn 
-                            ? (_hasCheckedOut ? 'Completed' : 'Checked In')
-                            : 'Not Checked In',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: _hasCheckedIn 
-                              ? (_hasCheckedOut ? Colors.grey[700] : Colors.green[700])
-                              : Colors.orange[700],
-                        ),
-                      ),
-                    ),
+                    // Simple status indicator without the button
+                    // Container(
+                    //   padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    //   decoration: BoxDecoration(
+                    //     color: _getStatusColor().withOpacity(0.1),
+                    //     borderRadius: BorderRadius.circular(12),
+                    //     border: Border.all(
+                    //       color: _getStatusColor(),
+                    //       width: 1,
+                    //     ),
+                    //   ),
+                    //   child: Text(
+                    //     _getStatusText(),
+                    //     style: TextStyle(
+                    //       fontSize: 12,
+                    //       fontWeight: FontWeight.bold,
+                    //       color: _getStatusColor(),
+                    //     ),
+                    //   ),
+                    // ),
                   ],
                 ),
               ],
@@ -532,7 +522,7 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                       gradient: LinearGradient(
                         colors: _isWithinRadius 
                             ? [Colors.green[600]!, Colors.green[500]!]
-                            : [Colors.orange[600]!, Colors.orange[500]!],
+                            : (_hasGeofence ? [Colors.orange[600]!, Colors.orange[500]!] : [Colors.blue[600]!, Colors.blue[500]!]),
                       ),
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: [
@@ -552,23 +542,43 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child: Icon(
-                            _isWithinRadius ? Icons.check_circle : Icons.location_off,
+                            _isWithinRadius 
+                                ? Icons.check_circle 
+                                : (_hasGeofence ? Icons.location_off : Icons.location_searching),
                             color: Colors.white,
                             size: 24,
                           ),
                         ),
                         SizedBox(width: 12),
                         Expanded(
-                          child: Text(
-                            _isWithinRadius 
-                                ? 'Within Attendance Area ✓'
-                                : 'Move to Designated Area',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 15,
-                              letterSpacing: 0.3,
-                            ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _hasGeofence 
+                                    ? (_isWithinRadius ? 'WITHIN ATTENDANCE AREA' : 'OUTSIDE ATTENDANCE AREA')
+                                    : 'NO GEOFENCE CONFIGURED',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                  color: Colors.white,
+                                  letterSpacing: 0.8,
+                                ),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                _hasGeofence
+                                    ? (_isWithinRadius 
+                                        ? 'You can mark your attendance'
+                                        : 'Move to allowed attendance area')
+                                    : 'Attendance allowed from any location',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -578,13 +588,14 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
 
                 // Refresh Location Button
                 Positioned(
-                  bottom: 100,
+                  bottom: 120,
                   right: 16,
                   child: FloatingActionButton(
                     onPressed: _getCurrentLocation,
                     backgroundColor: Colors.white,
+                    foregroundColor: Colors.blue,
                     elevation: 4,
-                    child: Icon(Icons.my_location, color: Colors.blue[700], size: 28),
+                    child: Icon(Icons.my_location, size: 24),
                   ),
                 ),
               ],
@@ -611,7 +622,7 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
             ),
             child: Column(
               children: [
-                // Attendance Type Selection
+                // Attendance Type Selection - FIXED: Both buttons are always selectable
                 Container(
                   padding: EdgeInsets.all(6),
                   decoration: BoxDecoration(
@@ -630,25 +641,25 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                 
                 // Main Action Button
                 GestureDetector(
-                  onTap: _isWithinRadius && !_isLoading ? _markAttendance : null,
+                  onTap: (_isWithinRadius || !_hasGeofence) && !_isLoading ? _markAttendance : null,
                   child: Container(
                     width: double.infinity,
                     height: 60,
                     decoration: BoxDecoration(
-                      gradient: _isWithinRadius 
+                      gradient: (_isWithinRadius || !_hasGeofence) 
                           ? LinearGradient(
                               colors: _selectedType == AttendanceService.checkInType 
                                   ? [Colors.green[600]!, Colors.green[500]!]
-                                  : [Colors.blue[600]!, Colors.blue[500]!],
+                                  : [Colors.orange[600]!, Colors.orange[500]!],
                             )
                           : null,
-                      color: !_isWithinRadius ? Colors.grey[300] : null,
+                      color: !(_isWithinRadius || !_hasGeofence) ? Colors.grey[300] : null,
                       borderRadius: BorderRadius.circular(16),
-                      boxShadow: _isWithinRadius ? [
+                      boxShadow: (_isWithinRadius || !_hasGeofence) ? [
                         BoxShadow(
                           color: (_selectedType == AttendanceService.checkInType 
                               ? Colors.green 
-                              : Colors.blue).withOpacity(0.4),
+                              : Colors.orange).withOpacity(0.4),
                           blurRadius: 12,
                           offset: Offset(0, 6),
                         ),
@@ -671,7 +682,7 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                                   _selectedType == AttendanceService.checkInType 
                                       ? Icons.fingerprint 
                                       : Icons.exit_to_app,
-                                  color: _isWithinRadius ? Colors.white : Colors.grey[500],
+                                  color: (_isWithinRadius || !_hasGeofence) ? Colors.white : Colors.grey[500],
                                   size: 28,
                                 ),
                                 SizedBox(width: 12),
@@ -680,7 +691,7 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                                   style: TextStyle(
                                     fontSize: 18,
                                     fontWeight: FontWeight.bold,
-                                    color: _isWithinRadius ? Colors.white : Colors.grey[500],
+                                    color: (_isWithinRadius || !_hasGeofence) ? Colors.white : Colors.grey[500],
                                     letterSpacing: 1.2,
                                   ),
                                 ),
@@ -699,13 +710,17 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
 
   Widget _buildTypeButton(String type, String label, IconData icon) {
     bool isSelected = _selectedType == type;
+    
+    // FIXED: Both buttons are always enabled and selectable
+    bool isEnabled = true;
+    
     return Expanded(
       child: GestureDetector(
-        onTap: () {
+        onTap: isEnabled ? () {
           setState(() {
             _selectedType = type;
           });
-        },
+        } : null,
         child: Container(
           padding: EdgeInsets.symmetric(vertical: 14, horizontal: 12),
           decoration: BoxDecoration(
@@ -713,18 +728,22 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                 ? LinearGradient(
                     colors: type == AttendanceService.checkInType 
                         ? [Colors.green[600]!, Colors.green[500]!]
-                        : [Colors.blue[600]!, Colors.blue[500]!],
+                        : [Colors.orange[600]!, Colors.orange[500]!],
                   )
                 : null,
             color: !isSelected ? Colors.transparent : null,
             borderRadius: BorderRadius.circular(10),
+            border: isSelected ? null : Border.all(
+              color: Colors.grey[300]!,
+              width: 1,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
                 icon,
-                color: isSelected ? Colors.white : Colors.grey[600],
+                color: isSelected ? Colors.white : (isEnabled ? Colors.grey[600] : Colors.grey[400]),
                 size: 20,
               ),
               SizedBox(width: 8),
@@ -732,7 +751,7 @@ class _AttendanceWithMapScreenState extends State<AttendanceWithMapScreen> {
                 label,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: isSelected ? Colors.white : Colors.grey[600],
+                  color: isSelected ? Colors.white : (isEnabled ? Colors.grey[600] : Colors.grey[400]),
                   fontWeight: FontWeight.bold,
                   fontSize: 13,
                   letterSpacing: 0.5,

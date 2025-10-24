@@ -27,10 +27,12 @@ Map<String, dynamic> decodeJwtPayload(String token) {
     print('   CompanyID: ${jsonData['CompanyID']}');
     print('   EmployeeID: ${jsonData['EmployeeID']}');
     print('   UserName: ${jsonData['UserName']}');
+    print('   EmployeeCode: ${jsonData['EmployeeCode']}');
     print('   Email: ${jsonData['Email']}');
     print('   CompanyName: ${jsonData['CompanyName']}');
     print('   Expiration: ${jsonData['exp']}');
     print('   EmployeeThumbnail: ${jsonData['EmployeeThumbnail']}');
+    print('   GeoFenceID: ${jsonData['GeoFenceID']}');
     
     return jsonData;
   } catch (e) {

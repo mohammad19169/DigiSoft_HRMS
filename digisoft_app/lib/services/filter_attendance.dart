@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:digisoft_app/global.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AttendanceFilterService {
-  static const String baseUrl = 'http://stagging.digisoftproducts.com/';
+  static String baseUrl = baseURL;
   
   // Prefs keys
   static const String companyIdKey = 'companyID';

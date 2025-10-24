@@ -17,7 +17,7 @@ class _MySettingsState extends State<MySettings> {
     final colorScheme = theme.colorScheme;
 
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: colorScheme.surface,
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 40.0),
         child: Column(
@@ -35,7 +35,7 @@ class _MySettingsState extends State<MySettings> {
                     },
                     icon: Icon(
                       Icons.arrow_back,
-                      color: colorScheme.onBackground,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -49,7 +49,7 @@ class _MySettingsState extends State<MySettings> {
                     'Settings',
                     style: theme.textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: colorScheme.onBackground,
+                      color: colorScheme.onSurface,
                     ),
                   ),
                 ],

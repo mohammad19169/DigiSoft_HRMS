@@ -833,9 +833,7 @@ Future<void> _selectFromDate() async {
 }
 
 Future<void> _selectToDate() async {
-  if (_fromDate == null) {
-    _fromDate = DateTime.now();
-  }
+  _fromDate ??= DateTime.now();
   final picked = await showDatePicker(
     context: context,
     initialDate: _toDate ?? _fromDate!,

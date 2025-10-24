@@ -1,439 +1,1098 @@
+// import 'dart:async';
+// import 'dart:convert';
+// import 'dart:math';
+// import 'package:digisoft_app/global.dart';
+// import 'package:http/http.dart' as http;
+// import 'package:shared_preferences/shared_preferences.dart';
+
+// class AttendanceService {
+//   static String baseUrl = baseURL;
+  
+//   // Attendance Types
+//   static const String checkInType = 'CheckIn';
+//   static const String checkOutType = 'CheckOut';
+
+//   // Fix the base URL by removing any trailing slashes
+//   static String get _baseUrl {
+//     String url = baseURL;
+//     if (url.endsWith('/')) {
+//       url = url.substring(0, url.length - 1);
+//     }
+//     return url;
+//   }
+
+//   // Get user data from SharedPreferences - FIXED: Handle GeoFenceID properly
+//   static Future<Map<String, dynamic>> _getUserDataFromPrefs() async {
+//     try {
+//       final prefs = await SharedPreferences.getInstance();
+      
+//       // Handle both string and int types
+//       final geoFenceID = _getStringFromPrefs(prefs, 'GeoFenceID'); // FIXED: Get as string
+//       final employeeID = _getIntFromPrefs(prefs, 'employeeID');
+//       final companyID = _getIntFromPrefs(prefs, 'companyID');
+//       final token = prefs.getString('token') ?? '';
+      
+//       print('🔍 Retrieved from SharedPreferences:');
+//       print('   GeoFenceID: $geoFenceID');
+//       print('   EmployeeID: $employeeID');
+//       print('   CompanyID: $companyID');
+//       print('   Token length: ${token.length}');
+      
+//       if (employeeID == 0 || companyID == 0 || token.isEmpty) {
+//         throw Exception('Required data not found in SharedPreferences');
+//       }
+      
+//       return {
+//         'geoFenceID': geoFenceID, // Now as string
+//         'employeeID': employeeID,
+//         'companyID': companyID,
+//         'token': token,
+//       };
+//     } catch (e) {
+//       print('❌ Error getting data from SharedPreferences: $e');
+//       rethrow;
+//     }
+//   }
+
+//   // Helper method to get integer from prefs handling both string and int
+//   static int _getIntFromPrefs(SharedPreferences prefs, String key) {
+//     try {
+//       // First try to get as int
+//       final intValue = prefs.getInt(key);
+//       if (intValue != null) return intValue;
+      
+//       // If not found as int, try as string
+//       final stringValue = prefs.getString(key);
+//       if (stringValue != null && stringValue.isNotEmpty) {
+//         return int.tryParse(stringValue) ?? 0;
+//       }
+      
+//       return 0;
+//     } catch (e) {
+//       print('❌ Error getting $key from prefs: $e');
+//       return 0;
+//     }
+//   }
+
+//   // Helper method to get string from prefs - NEW METHOD
+//   static String _getStringFromPrefs(SharedPreferences prefs, String key) {
+//     try {
+//       // First try to get as string
+//       final stringValue = prefs.getString(key);
+//       if (stringValue != null) return stringValue;
+      
+//       // If not found as string, try as int and convert to string
+//       final intValue = prefs.getInt(key);
+//       if (intValue != null) return intValue.toString();
+      
+//       return '';
+//     } catch (e) {
+//       print('❌ Error getting $key from prefs: $e');
+//       return '';
+//     }
+//   }
+
+//   // Get all geofence locations for maps - FIXED: Handle empty GeoFenceID
+//   static Future<List<Map<String, dynamic>>> getGeofenceLocationsInfo() async {
+//     try {
+//       final userData = await _getUserDataFromPrefs();
+//       final geoFenceID = userData['geoFenceID']!;
+      
+//       // Check if GeoFenceID is valid
+//       if (geoFenceID.isEmpty || geoFenceID == '0') {
+//         print('⚠️ No valid GeoFenceID found: $geoFenceID');
+//         return [];
+//       }
+      
+//       // Since we don't have GetAll endpoint, get the single location by ID
+//       final url = '$_baseUrl/hrm/api/GeoFenceLocation/Getbyid/$geoFenceID';
+//       print('📡 Getting geofence location: $url');
+
+//       final response = await http.get(
+//         Uri.parse(url),
+//         headers: {
+//           'Content-Type': 'application/json',
+//           'Accept': 'application/json',
+//         },
+//       ).timeout(Duration(seconds: 30));
+
+//       print('📊 Geofence Location Response Status: ${response.statusCode}');
+//       print('📊 Geofence Location Response Body: ${response.body}');
+
+//       if (response.statusCode == 200) {
+//         final Map<String, dynamic> responseData = json.decode(response.body);
+//         final Map<String, dynamic> data = responseData['data'] ?? {};
+        
+//         // Convert single location to list format for UI
+//         final List<Map<String, dynamic>> locations = [];
+        
+//         if (data.isNotEmpty && data['locationID'] != null) {
+//           locations.add({
+//             'locationID': data['locationID'] ?? 0,
+//             'locationName': data['locationName'] ?? '',
+//             'latitude': (data['latitude'] ?? 0.0).toDouble(),
+//             'longitude': (data['longitude'] ?? 0.0).toDouble(),
+//             'radius': (data['radiusInMeters'] ?? 0.0).toDouble(),
+//             'isActive': data['isActive'] ?? false,
+//           });
+          
+//           print('✅ Geofence location retrieved successfully: ${data['locationName']}');
+//         }
+        
+//         return locations;
+//       } else {
+//         print('⚠️ Failed to load geofence location. Status: ${response.statusCode}');
+//         return [];
+//       }
+//     } catch (e) {
+//       print('❌ Error loading geofence location: $e');
+//       // Return empty list instead of throwing to prevent UI crashes
+//       return [];
+//     }
+//   }
+
+//   // Check if within any geofence (for multiple locations) - FIXED: Handle no geofence scenario
+//   static Future<bool> isWithinAnyGeofenceLocation(double userLat, double userLng, List<dynamic> geofenceLocations) async {
+//     try {
+//       print('📍 Checking if within any geofence...');
+//       print('📍 User Location: $userLat, $userLng');
+//       print('📍 Total geofence locations: ${geofenceLocations.length}');
+
+//       // If no geofence locations, try to get the single location
+//       if (geofenceLocations.isEmpty) {
+//         print('⚠️ No geofence locations in list, fetching single location...');
+//         final locations = await getGeofenceLocationsInfo();
+//         if (locations.isEmpty) {
+//           print('❌ No geofence locations available at all');
+//           return false;
+//         }
+//         geofenceLocations = locations;
+//       }
+
+//       for (final location in geofenceLocations) {
+//         if (location['isActive'] == true) {
+//           final distance = _calculateDistance(
+//             userLat,
+//             userLng,
+//             location['latitude'],
+//             location['longitude'],
+//           );
+          
+//           print('📍 Checking location: ${location['locationName']}');
+//           print('📍 Distance: ${distance.toStringAsFixed(2)}m, Radius: ${location['radius']}m');
+          
+//           if (distance <= location['radius']) {
+//             print('✅ User is within ${location['locationName']}');
+//             return true;
+//           }
+//         }
+//       }
+      
+//       print('❌ User is not within any active geofence');
+//       return false;
+//     } catch (e) {
+//       print('❌ Error checking geofence location: $e');
+//       return false;
+//     }
+//   }
+
+//   // Get today's attendance status
+//   static Future<Map<String, dynamic>> getTodayAttendance() async {
+//     try {
+//       final userData = await _getUserDataFromPrefs();
+//       final employeeID = userData['employeeID']!;
+//       final companyID = userData['companyID']!;
+//       final token = userData['token']!;
+      
+//       final today = DateTime.now().toIso8601String().split('T')[0];
+//       final url = '$_baseUrl/hrm/api/Attendance/GetTodayAttendance/$employeeID/$companyID?date=$today';
+      
+//       print('📡 Getting today attendance: $url');
+
+//       final response = await http.get(
+//         Uri.parse(url),
+//         headers: {
+//           'Content-Type': 'application/json',
+//           'Accept': 'application/json',
+//           'Authorization': 'Bearer $token',
+//         },
+//       ).timeout(Duration(seconds: 30));
+
+//       print('📊 Today Attendance Response Status: ${response.statusCode}');
+
+//       if (response.statusCode == 200) {
+//         final Map<String, dynamic> responseData = json.decode(response.body);
+//         final List<dynamic> data = responseData['data'] ?? [];
+        
+//         bool hasCheckedIn = false;
+//         bool hasCheckedOut = false;
+        
+//         for (final record in data) {
+//           if (record['checkInTime'] != null) hasCheckedIn = true;
+//           if (record['checkOutTime'] != null) hasCheckedOut = true;
+//         }
+        
+//         print('✅ Today attendance status - Checked In: $hasCheckedIn, Checked Out: $hasCheckedOut');
+        
+//         return {
+//           'hasCheckedIn': hasCheckedIn,
+//           'hasCheckedOut': hasCheckedOut,
+//           'records': data,
+//         };
+//       } else {
+//         // Return default values instead of throwing for 404
+//         print('⚠️ Today attendance not found (404), returning default values');
+//         return {
+//           'hasCheckedIn': false,
+//           'hasCheckedOut': false,
+//           'records': [],
+//         };
+//       }
+//     } catch (e) {
+//       print('❌ Error loading today attendance: $e');
+//       return {
+//         'hasCheckedIn': false,
+//         'hasCheckedOut': false,
+//         'records': [],
+//       };
+//     }
+//   }
+
+//   // Mark attendance with current data - FIXED: Handle no geofence scenario
+//   static Future<Map<String, dynamic>> markAttendanceWithCurrentData({
+//     required double latitude,
+//     required double longitude,
+//     required String attendanceType,
+//     String source = 'MobileApp',
+//     String description = '',
+//   }) async {
+//     try {
+//       final userData = await _getUserDataFromPrefs();
+//       final employeeID = userData['employeeID']!;
+//       final companyID = userData['companyID']!;
+//       final token = userData['token']!;
+      
+//       // Get geofence location name - FIXED: Handle no geofence scenario
+//       String geoLocation = 'Unknown Location';
+//       bool isWithinGeofence = false;
+      
+//       try {
+//         final geofenceLocations = await getGeofenceLocationsInfo();
+//         isWithinGeofence = await isWithinAnyGeofenceLocation(latitude, longitude, geofenceLocations);
+//         if (isWithinGeofence && geofenceLocations.isNotEmpty) {
+//           geoLocation = geofenceLocations.first['locationName'] ?? 'Office Location';
+//         } else if (geofenceLocations.isEmpty) {
+//           // If no geofence is configured, allow attendance from anywhere
+//           print('⚠️ No geofence configured, allowing attendance from any location');
+//           geoLocation = 'No Geofence Configured';
+//           isWithinGeofence = true; // Allow attendance if no geofence
+//         }
+//       } catch (e) {
+//         print('⚠️ Error checking geofence: $e');
+//         // If geofence check fails, still allow attendance but log the issue
+//         isWithinGeofence = true;
+//         geoLocation = 'Geofence Check Failed';
+//       }
+
+//       // Check if within geofence (only if geofence is configured)
+//       final geofenceLocations = await getGeofenceLocationsInfo();
+//       if (geofenceLocations.isNotEmpty && !isWithinGeofence) {
+//         return {
+//           'isSuccess': false,
+//           'message': 'You are not within any allowed attendance area',
+//           'data': null,
+//           'statusCode': 400,
+//         };
+//       }
+
+//       // Prepare request body based on attendance type
+//       final Map<String, dynamic> requestBody;
+      
+//       if (attendanceType == checkInType) {
+//         requestBody = {
+//           "employeeID": employeeID.toString(),
+//           "companyID": companyID.toString(),
+//           "latitude": latitude,
+//           "longitude": longitude,
+//           "punchTime": DateTime.now().toIso8601String(),
+//           "ipAddress": await _getIPAddress(),
+//           "source": source,
+//           "descIn": description.isNotEmpty ? description : 'Checked In from Mobile App',
+//           "geoLocationIn": geoLocation,
+//         };
+//       } else {
+//         requestBody = {
+//           "employeeID": employeeID.toString(),
+//           "companyID": companyID.toString(),
+//           "latitude": latitude,
+//           "longitude": longitude,
+//           "punchTime": DateTime.now().toIso8601String(),
+//           "ipAddress": await _getIPAddress(),
+//           "source": source,
+//           "descin": description.isNotEmpty ? description : 'Checked Out from Mobile App',
+//           "geoLocationOut": geoLocation,
+//         };
+//       }
+
+//       final String endpoint = attendanceType == checkInType 
+//           ? 'CheckIn' 
+//           : 'CheckOut';
+          
+//       final url = '$_baseUrl/hrm/api/Attendance/$endpoint';
+//       print('📡 Marking attendance ($attendanceType): $url');
+//       print('📦 Request Body: ${json.encode(requestBody)}');
+
+//       final response = await http.post(
+//         Uri.parse(url),
+//         headers: {
+//           'Content-Type': 'application/json',
+//           'Accept': 'application/json',
+//           'Authorization': 'Bearer $token',
+//         },
+//         body: json.encode(requestBody),
+//       ).timeout(Duration(seconds: 30));
+
+//       print('📊 Attendance Response Status: ${response.statusCode}');
+//       print('📊 Attendance Response Body: ${response.body}');
+
+//       if (response.statusCode == 200) {
+//         final Map<String, dynamic> responseData = json.decode(response.body);
+//         return {
+//           'isSuccess': responseData['isSuccess'] ?? false,
+//           'message': responseData['message'] ?? 'Attendance marked successfully',
+//           'data': responseData['data'],
+//           'statusCode': responseData['statusCode'] ?? 200,
+//         };
+//       } else if (response.statusCode == 400) {
+//         final Map<String, dynamic> errorData = json.decode(response.body);
+//         return {
+//           'isSuccess': false,
+//           'message': errorData['message'] ?? 'Bad request',
+//           'data': null,
+//           'statusCode': 400,
+//         };
+//       } else if (response.statusCode == 401) {
+//         return {
+//           'isSuccess': false,
+//           'message': 'Unauthorized - Please login again',
+//           'data': null,
+//           'statusCode': 401,
+//         };
+//       } else {
+//         return {
+//           'isSuccess': false,
+//           'message': 'Failed to mark attendance. Status: ${response.statusCode}',
+//           'data': null,
+//           'statusCode': response.statusCode,
+//         };
+//       }
+//     } catch (e) {
+//       print('❌ Unexpected error during attendance: $e');
+//       return {
+//         'isSuccess': false,
+//         'message': 'Failed to mark attendance: $e',
+//         'data': null,
+//         'statusCode': 0,
+//       };
+//     }
+//   }
+
+//   // Get IP Address (placeholder implementation)
+//   static Future<String> _getIPAddress() async {
+//     try {
+//       return '192.168.1.1';
+//     } catch (e) {
+//       return 'Unknown';
+//     }
+//   }
+
+//   // Calculate distance between two coordinates using Haversine formula
+//   static double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+//     const earthRadius = 6371000; // meters
+
+//     final dLat = _toRadians(lat2 - lat1);
+//     final dLon = _toRadians(lon2 - lon1);
+
+//     final a = sin(dLat / 2) * sin(dLat / 2) +
+//         cos(_toRadians(lat1)) * cos(_toRadians(lat2)) * sin(dLon / 2) * sin(dLon / 2);
+    
+//     final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+//     final distance = earthRadius * c;
+
+//     return distance;
+//   }
+
+//   static double _toRadians(double degree) {
+//     return degree * pi / 180;
+//   }
+// }
+
+// // Response Models (keep the same)
+// class GeoFenceResponse {
+//   final int statusCode;
+//   final String message;
+//   final GeoFenceData data;
+//   final List<dynamic> errors;
+//   final bool isSuccess;
+//   final String timestamp;
+
+//   GeoFenceResponse({
+//     required this.statusCode,
+//     required this.message,
+//     required this.data,
+//     required this.errors,
+//     required this.isSuccess,
+//     required this.timestamp,
+//   });
+
+//   factory GeoFenceResponse.fromJson(Map<String, dynamic> json) {
+//     return GeoFenceResponse(
+//       statusCode: json['statusCode'] ?? 0,
+//       message: json['message'] ?? '',
+//       data: GeoFenceData.fromJson(json['data'] ?? {}),
+//       errors: json['errors'] ?? [],
+//       isSuccess: json['isSuccess'] ?? false,
+//       timestamp: json['timestamp'] ?? '',
+//     );
+//   }
+// }
+
+// class GeoFenceData {
+//   final int locationID;
+//   final int companyID;
+//   final String locationName;
+//   final double latitude;
+//   final double longitude;
+//   final double radiusInMeters;
+//   final bool isActive;
+//   final String createdOn;
+//   final String createdBy;
+//   final String? updatedOn;
+//   final String? updatedBy;
+
+//   GeoFenceData({
+//     required this.locationID,
+//     required this.companyID,
+//     required this.locationName,
+//     required this.latitude,
+//     required this.longitude,
+//     required this.radiusInMeters,
+//     required this.isActive,
+//     required this.createdOn,
+//     required this.createdBy,
+//     this.updatedOn,
+//     this.updatedBy,
+//   });
+
+//   factory GeoFenceData.fromJson(Map<String, dynamic> json) {
+//     return GeoFenceData(
+//       locationID: json['locationID'] ?? 0,
+//       companyID: json['companyID'] ?? 0,
+//       locationName: json['locationName'] ?? '',
+//       latitude: (json['latitude'] ?? 0.0).toDouble(),
+//       longitude: (json['longitude'] ?? 0.0).toDouble(),
+//       radiusInMeters: (json['radiusInMeters'] ?? 0.0).toDouble(),
+//       isActive: json['isActive'] ?? false,
+//       createdOn: json['createdOn'] ?? '',
+//       createdBy: json['createdBy'] ?? '',
+//       updatedOn: json['updatedOn'],
+//       updatedBy: json['updatedBy'],
+//     );
+//   }
+// }
+
+// class AttendanceResponse {
+//   final int statusCode;
+//   final String message;
+//   final dynamic data;
+//   final List<dynamic> errors;
+//   final bool isSuccess;
+//   final String timestamp;
+
+//   AttendanceResponse({
+//     required this.statusCode,
+//     required this.message,
+//     required this.data,
+//     required this.errors,
+//     required this.isSuccess,
+//     required this.timestamp,
+//   });
+
+//   factory AttendanceResponse.fromJson(Map<String, dynamic> json) {
+//     return AttendanceResponse(
+//       statusCode: json['statusCode'] ?? 0,
+//       message: json['message'] ?? '',
+//       data: json['data'],
+//       errors: json['errors'] ?? [],
+//       isSuccess: json['isSuccess'] ?? false,
+//       timestamp: json['timestamp'] ?? '',
+//     );
+//   }
+// }
+
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:digisoft_app/global.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AttendanceService {
-  static const String baseUrl = 'http://stagging.digisoftproducts.com/hrm/api/';
-
-  // Define possible attendance types
+  static String baseUrl = baseURL;
+  
+  // Attendance Types
   static const String checkInType = 'CheckIn';
   static const String checkOutType = 'CheckOut';
 
-  // Check if automatic time is enabled
-  Future<bool> isAutomaticTimeEnabled() async {
+  // Fix the base URL by removing any trailing slashes
+  static String get _baseUrl {
+    String url = baseURL;
+    if (url.endsWith('/')) {
+      url = url.substring(0, url.length - 1);
+    }
+    return url;
+  }
+
+  // Get user data from SharedPreferences
+  static Future<Map<String, dynamic>> _getUserDataFromPrefs() async {
     try {
-      // Get current device time
-      final deviceTime = DateTime.now();
+      final prefs = await SharedPreferences.getInstance();
       
-      // Get time from a reliable internet source (NTP server or your API)
-      final serverTime = await _getServerTime();
+      // Handle both string and int types
+      final geoFenceID = _getStringFromPrefs(prefs, 'GeoFenceID');
+      final employeeID = _getIntFromPrefs(prefs, 'employeeID');
+      final companyID = _getIntFromPrefs(prefs, 'companyID');
+      final token = prefs.getString('token') ?? '';
+      final createdBy = prefs.getString('createdBy') ?? 'hrm';
       
-      if (serverTime == null) {
-        throw Exception('Unable to verify time. Please check your internet connection.');
+      print('🔍 Retrieved from SharedPreferences:');
+      print('   GeoFenceID: $geoFenceID');
+      print('   EmployeeID: $employeeID');
+      print('   CompanyID: $companyID');
+      print('   CreatedBy: $createdBy');
+      print('   Token length: ${token.length}');
+      
+      if (employeeID == 0 || companyID == 0 || token.isEmpty) {
+        throw Exception('Required data not found in SharedPreferences');
       }
-
-      // Calculate difference in seconds
-      final difference = deviceTime.difference(serverTime).inSeconds.abs();
       
-      print('⏰ Device Time: $deviceTime');
-      print('🌐 Server Time: $serverTime');
-      print('⏱️ Time Difference: $difference seconds');
-
-      // Allow max 30 seconds difference (for network delays and processing)
-      if (difference > 30) {
-        return false;
-      }
-
-      return true;
+      return {
+        'geoFenceID': geoFenceID,
+        'employeeID': employeeID,
+        'companyID': companyID,
+        'token': token,
+        'createdBy': createdBy,
+      };
     } catch (e) {
-      print('❌ Error checking automatic time: $e');
+      print('❌ Error getting data from SharedPreferences: $e');
       rethrow;
     }
   }
 
-  // Get server time from your API or NTP server
-  Future<DateTime?> _getServerTime() async {
+  // Helper method to get integer from prefs handling both string and int
+  static int _getIntFromPrefs(SharedPreferences prefs, String key) {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token') ?? '';
-
-      // Option 1: Get time from your API
-      final url = Uri.parse('${baseUrl}ServerTime'); // You need to create this endpoint
+      // First try to get as int
+      final intValue = prefs.getInt(key);
+      if (intValue != null) return intValue;
       
+      // If not found as int, try as string
+      final stringValue = prefs.getString(key);
+      if (stringValue != null && stringValue.isNotEmpty) {
+        return int.tryParse(stringValue) ?? 0;
+      }
+      
+      return 0;
+    } catch (e) {
+      print('❌ Error getting $key from prefs: $e');
+      return 0;
+    }
+  }
+
+  // Helper method to get string from prefs
+  static String _getStringFromPrefs(SharedPreferences prefs, String key) {
+    try {
+      // First try to get as string
+      final stringValue = prefs.getString(key);
+      if (stringValue != null) return stringValue;
+      
+      // If not found as string, try as int and convert to string
+      final intValue = prefs.getInt(key);
+      if (intValue != null) return intValue.toString();
+      
+      return '';
+    } catch (e) {
+      print('❌ Error getting $key from prefs: $e');
+      return '';
+    }
+  }
+
+  // Get all geofence locations for maps
+  static Future<List<Map<String, dynamic>>> getGeofenceLocationsInfo() async {
+    try {
+      final userData = await _getUserDataFromPrefs();
+      final geoFenceID = userData['geoFenceID']!;
+      
+      // Check if GeoFenceID is valid
+      if (geoFenceID.isEmpty || geoFenceID == '0') {
+        print('⚠️ No valid GeoFenceID found: $geoFenceID');
+        return [];
+      }
+      
+      // Since we don't have GetAll endpoint, get the single location by ID
+      final url = '$_baseUrl/hrm/api/GeoFenceLocation/Getbyid/$geoFenceID';
+      print('📡 Getting geofence location: $url');
+
       final response = await http.get(
-        url,
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(Duration(seconds: 30));
+
+      print('📊 Geofence Location Response Status: ${response.statusCode}');
+      print('📊 Geofence Location Response Body: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        final Map<String, dynamic> data = responseData['data'] ?? {};
+        
+        // Convert single location to list format for UI
+        final List<Map<String, dynamic>> locations = [];
+        
+        if (data.isNotEmpty && data['locationID'] != null) {
+          locations.add({
+            'locationID': data['locationID'] ?? 0,
+            'locationName': data['locationName'] ?? '',
+            'latitude': (data['latitude'] ?? 0.0).toDouble(),
+            'longitude': (data['longitude'] ?? 0.0).toDouble(),
+            'radius': (data['radiusInMeters'] ?? 0.0).toDouble(),
+            'isActive': data['isActive'] ?? false,
+          });
+          
+          print('✅ Geofence location retrieved successfully: ${data['locationName']}');
+        }
+        
+        return locations;
+      } else {
+        print('⚠️ Failed to load geofence location. Status: ${response.statusCode}');
+        return [];
+      }
+    } catch (e) {
+      print('❌ Error loading geofence location: $e');
+      // Return empty list instead of throwing to prevent UI crashes
+      return [];
+    }
+  }
+
+  // Check if within any geofence (for multiple locations)
+  static Future<bool> isWithinAnyGeofenceLocation(double userLat, double userLng, List<dynamic> geofenceLocations) async {
+    try {
+      print('📍 Checking if within any geofence...');
+      print('📍 User Location: $userLat, $userLng');
+      print('📍 Total geofence locations: ${geofenceLocations.length}');
+
+      // If no geofence locations, try to get the single location
+      if (geofenceLocations.isEmpty) {
+        print('⚠️ No geofence locations in list, fetching single location...');
+        final locations = await getGeofenceLocationsInfo();
+        if (locations.isEmpty) {
+          print('❌ No geofence locations available at all');
+          return false;
+        }
+        geofenceLocations = locations;
+      }
+
+      for (final location in geofenceLocations) {
+        if (location['isActive'] == true) {
+          final distance = _calculateDistance(
+            userLat,
+            userLng,
+            location['latitude'],
+            location['longitude'],
+          );
+          
+          print('📍 Checking location: ${location['locationName']}');
+          print('📍 Distance: ${distance.toStringAsFixed(2)}m, Radius: ${location['radius']}m');
+          
+          if (distance <= location['radius']) {
+            print('✅ User is within ${location['locationName']}');
+            return true;
+          }
+        }
+      }
+      
+      print('❌ User is not within any active geofence');
+      return false;
+    } catch (e) {
+      print('❌ Error checking geofence location: $e');
+      return false;
+    }
+  }
+
+  // Get today's attendance status
+  static Future<Map<String, dynamic>> getTodayAttendance() async {
+    try {
+      final userData = await _getUserDataFromPrefs();
+      final employeeID = userData['employeeID']!;
+      final companyID = userData['companyID']!;
+      final token = userData['token']!;
+      
+      final today = DateTime.now().toIso8601String().split('T')[0];
+      final url = '$_baseUrl/hrm/api/Attendance/GetTodayAttendance/$employeeID/$companyID?date=$today';
+      
+      print('📡 Getting today attendance: $url');
+
+      final response = await http.get(
+        Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
-      ).timeout(Duration(seconds: 10));
+      ).timeout(Duration(seconds: 30));
+
+      print('📊 Today Attendance Response Status: ${response.statusCode}');
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        // Assuming API returns: {"serverTime": "2025-10-22T10:30:00.000Z"}
-        return DateTime.parse(data['serverTime']);
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        final List<dynamic> data = responseData['data'] ?? [];
+        
+        bool hasCheckedIn = false;
+        bool hasCheckedOut = false;
+        
+        for (final record in data) {
+          if (record['checkInTime'] != null) hasCheckedIn = true;
+          if (record['checkOutTime'] != null) hasCheckedOut = true;
+        }
+        
+        print('✅ Today attendance status - Checked In: $hasCheckedIn, Checked Out: $hasCheckedOut');
+        
+        return {
+          'hasCheckedIn': hasCheckedIn,
+          'hasCheckedOut': hasCheckedOut,
+          'records': data,
+        };
+      } else {
+        // Return default values instead of throwing for 404
+        print('⚠️ Today attendance not found (404), returning default values');
+        return {
+          'hasCheckedIn': false,
+          'hasCheckedOut': false,
+          'records': [],
+        };
       }
-
-      // Option 2: If API endpoint doesn't exist, use worldtimeapi.org
-      final worldTimeUrl = Uri.parse('http://worldtimeapi.org/api/timezone/Asia/Karachi');
-      final worldTimeResponse = await http.get(worldTimeUrl).timeout(Duration(seconds: 10));
-      
-      if (worldTimeResponse.statusCode == 200) {
-        final data = jsonDecode(worldTimeResponse.body);
-        return DateTime.parse(data['datetime']);
-      }
-
-      return null;
     } catch (e) {
-      print('❌ Error getting server time: $e');
-      return null;
+      print('❌ Error loading today attendance: $e');
+      return {
+        'hasCheckedIn': false,
+        'hasCheckedOut': false,
+        'records': [],
+      };
     }
   }
 
-  Future<Map<String, dynamic>> markAttendance({
-    required int employeeID,
-    required int companyID,
+  // Mark attendance with current data - FIXED: Handle "already checked out/in" messages
+  static Future<Map<String, dynamic>> markAttendanceWithCurrentData({
     required double latitude,
     required double longitude,
-    required String punchTime,
     required String attendanceType,
     String source = 'MobileApp',
     String description = '',
   }) async {
     try {
-      // IMPORTANT: Validate automatic time is enabled BEFORE marking attendance
-      final isTimeAutomatic = await isAutomaticTimeEnabled();
-      if (!isTimeAutomatic) {
-        throw Exception('Please enable "Automatic date & time" in your phone settings to mark attendance.');
-      }
-
-      // First, get all geofence locations for the company
-      final List<dynamic> geofenceLocations = await getAllGeofenceLocations(companyID);
+      final userData = await _getUserDataFromPrefs();
+      final employeeID = userData['employeeID']!;
+      final companyID = userData['companyID']!;
+      final token = userData['token']!;
+      final createdBy = userData['createdBy']!;
       
-      // Check if user is within any of the allowed geofence locations
-      final bool isWithinAllowedArea = await isWithinAnyGeofenceLocation(
-        latitude, 
-        longitude, 
-        geofenceLocations
-      );
-
-      if (!isWithinAllowedArea) {
-        throw Exception('You are not within any allowed attendance area. Please move to a designated company location.');
+      // Get geofence location name
+      String geoLocation = 'Unknown Location';
+      bool isWithinGeofence = false;
+      
+      try {
+        final geofenceLocations = await getGeofenceLocationsInfo();
+        isWithinGeofence = await isWithinAnyGeofenceLocation(latitude, longitude, geofenceLocations);
+        if (isWithinGeofence && geofenceLocations.isNotEmpty) {
+          geoLocation = geofenceLocations.first['locationName'] ?? 'Office Location';
+        } else if (geofenceLocations.isEmpty) {
+          // If no geofence is configured, allow attendance from anywhere
+          print('⚠️ No geofence configured, allowing attendance from any location');
+          geoLocation = 'No Geofence Configured';
+          isWithinGeofence = true; // Allow attendance if no geofence
+        }
+      } catch (e) {
+        print('⚠️ Error checking geofence: $e');
+        // If geofence check fails, still allow attendance but log the issue
+        isWithinGeofence = true;
+        geoLocation = 'Geofence Check Failed';
       }
 
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token') ?? '';
-
-      if (token.isEmpty) {
-        throw Exception('Authentication token not found. Please login again.');
+      // Check if within geofence (only if geofence is configured)
+      final geofenceLocations = await getGeofenceLocationsInfo();
+      if (geofenceLocations.isNotEmpty && !isWithinGeofence) {
+        return {
+          'isSuccess': false,
+          'message': 'You are not within any allowed attendance area',
+          'data': null,
+          'statusCode': 400,
+        };
       }
 
-      final url = Uri.parse('${baseUrl}Attendance/$attendanceType');
+      // Prepare request body based on attendance type
+      final Map<String, dynamic> requestBody;
+      
+      if (attendanceType == checkInType) {
+        // CheckIn request body
+        requestBody = {
+          "employeeID": employeeID.toString(),
+          "companyID": companyID.toString(),
+          "latitude": latitude,
+          "longitude": longitude,
+          "punchTime": DateTime.now().toIso8601String(),
+          "ipAddress": await _getIPAddress(),
+          "source": source,
+          "descIn": description.isNotEmpty ? description : 'Checked In from Mobile App',
+          "geoLocationIn": geoLocation,
+          "createdBy": createdBy,
+        };
+      } else {
+        // CheckOut request body
+        requestBody = {
+          "employeeID": employeeID.toString(),
+          "companyID": companyID.toString(),
+          "latitude": latitude,
+          "longitude": longitude,
+          "punchTime": DateTime.now().toIso8601String(),
+          "ipAddress": await _getIPAddress(),
+          "source": source,
+          "descOut": description.isNotEmpty ? description : 'Checked Out from Mobile App',
+          "geoLocationOut": geoLocation,
+          "createdBy": createdBy,
+        };
+      }
 
-      // Use description for both check-in and check-out in descIn field
-      final String finalDescription = description.isEmpty 
-          ? (attendanceType == checkInType ? 'Checked In' : 'Checked Out')
-          : description;
-
-      final Map<String, dynamic> requestBody = {
-        'employeeID': employeeID.toString(),
-        'companyID': companyID.toString(),
-        'latitude': latitude,
-        'longitude': longitude,
-        'punchTime': punchTime,
-        'source': source,
-        'descIn': finalDescription,
-      };
-
-      print('🌐 $attendanceType API URL: $url');
-      print('📤 Request Body: ${jsonEncode(requestBody)}');
+      final String endpoint = attendanceType == checkInType 
+          ? 'CheckIn' 
+          : 'CheckOut';
+          
+      final url = '$_baseUrl/hrm/api/Attendance/$endpoint';
+      print('📡 Marking attendance ($attendanceType): $url');
+      print('📦 Request Body: ${json.encode(requestBody)}');
 
       final response = await http.post(
-        url,
+        Uri.parse(url),
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: jsonEncode(requestBody),
-      );
+        body: json.encode(requestBody),
+      ).timeout(Duration(seconds: 30));
 
-      print('📡 $attendanceType Response Status: ${response.statusCode}');
-      print('📦 $attendanceType Response Body: ${response.body}');
-
-      final Map<String, dynamic> responseBody = jsonDecode(response.body);
+      print('📊 Attendance Response Status: ${response.statusCode}');
+      print('📊 Attendance Response Body: ${response.body}');
 
       if (response.statusCode == 200) {
+        final Map<String, dynamic> responseData = json.decode(response.body);
+        
+        // FIXED: Check if data contains error message even when isSuccess is true
+        final bool isSuccess = responseData['isSuccess'] ?? false;
+        String message = responseData['message'] ?? 'Attendance marked successfully';
+        final dynamic data = responseData['data'];
+        
+        // Check if data contains error message (like "Already checked out for today")
+        if (data != null && data is String && data.toLowerCase().contains('error')) {
+          message = data; // Use the error message from data field
+        } else if (data != null && data is String && data.isNotEmpty) {
+          // If data has a message but not an error, use it
+          message = data;
+        }
+        
+        // Check for specific error patterns in the message
+        final String lowerMessage = message.toLowerCase();
+        if (lowerMessage.contains('already checked out') || 
+            lowerMessage.contains('already checked in') ||
+            lowerMessage.contains('error')) {
+          return {
+            'isSuccess': false, // Treat as failure for these cases
+            'message': message,
+            'data': data,
+            'statusCode': responseData['statusCode'] ?? 200,
+          };
+        }
+        
         return {
-          'isSuccess': responseBody['isSuccess'] ?? false,
-          'message': responseBody['message'] ?? '$attendanceType completed',
-          'data': responseBody['data'] ?? responseBody,
-          'attendanceType': attendanceType,
-          'statusCode': response.statusCode,
+          'isSuccess': isSuccess,
+          'message': message,
+          'data': data,
+          'statusCode': responseData['statusCode'] ?? 200,
         };
       } else if (response.statusCode == 400) {
-        throw Exception(responseBody['message'] ?? 'Bad request. Please check your data.');
-      } else if (response.statusCode == 401) {
-        throw Exception('Authentication failed. Please login again.');
-      } else {
-        throw Exception(responseBody['message'] ?? 'HTTP ${response.statusCode}: ${response.body}');
-      }
-    } on http.ClientException catch (e) {
-      print('❌ Network error in $attendanceType: $e');
-      throw Exception('Network error: Please check your internet connection.');
-    } on FormatException catch (e) {
-      print('❌ Format error in $attendanceType: $e');
-      throw Exception('Invalid response format from server.');
-    } catch (e) {
-      print('❌ Error in $attendanceType: $e');
-      rethrow;
-    }
-  }
-
-  // Get All GeoFence Locations
-  Future<List<dynamic>> getAllGeofenceLocations(int companyId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token') ?? '';
-
-      if (token.isEmpty) {
-        throw Exception('Authentication token not found. Please login again.');
-      }
-
-      final url = Uri.parse('${baseUrl}GeoFenceLocation/$companyId');
-
-      print('🌐 Get All GeoFence Locations API URL: $url');
-
-      final response = await http.get(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      print('📡 GeoFence Locations Response Status: ${response.statusCode}');
-      print('📦 GeoFence Locations Response Body: ${response.body}');
-
-      if (response.statusCode == 200) {
-        final Map<String, dynamic> responseBody = jsonDecode(response.body);
-        
-        if (responseBody['isSuccess'] == true && responseBody['data'] != null) {
-          return responseBody['data'] as List<dynamic>;
-        } else {
-          throw Exception(responseBody['message'] ?? 'Failed to fetch geofence locations');
-        }
-      } else if (response.statusCode == 401) {
-        throw Exception('Authentication failed. Please login again.');
-      } else {
-        final Map<String, dynamic> responseBody = jsonDecode(response.body);
-        throw Exception(responseBody['message'] ?? 'HTTP ${response.statusCode}: Failed to fetch geofence locations');
-      }
-    } on http.ClientException catch (e) {
-      print('❌ Network error in getAllGeofenceLocations: $e');
-      throw Exception('Network error: Please check your internet connection.');
-    } on FormatException catch (e) {
-      print('❌ Format error in getAllGeofenceLocations: $e');
-      throw Exception('Invalid response format from server.');
-    } catch (e) {
-      print('❌ Error in getAllGeofenceLocations: $e');
-      rethrow;
-    }
-  }
-
-  // Check if user is within any of the geofence locations
-  Future<bool> isWithinAnyGeofenceLocation(
-    double userLat, 
-    double userLon, 
-    List<dynamic> geofenceLocations
-  ) async {
-    try {
-      if (geofenceLocations.isEmpty) {
-        print('⚠️ No geofence locations found for this company');
-        return false;
-      }
-
-      for (final location in geofenceLocations) {
-        final double locationLat = (location['latitude'] as num).toDouble();
-        final double locationLon = (location['longitude'] as num).toDouble();
-        final double radius = (location['radiusInMeters'] as num).toDouble();
-        final bool isActive = location['isActive'] as bool;
-
-        if (!isActive) {
-          continue;
-        }
-
-        final double distance = calculateDistance(
-          locationLat, 
-          locationLon, 
-          userLat, 
-          userLon
-        );
-
-        print('📍 Checking location: ${location['locationName']}');
-        print('📍 Distance: ${distance.toStringAsFixed(2)} meters (Allowed: $radius meters)');
-
-        if (distance <= radius) {
-          print('✅ User is within allowed location: ${location['locationName']}');
-          return true;
-        }
-      }
-
-      print('❌ User is not within any allowed geofence location');
-      return false;
-    } catch (e) {
-      print('❌ Error checking geofence locations: $e');
-      return false;
-    }
-  }
-
-  // Calculate distance between two coordinates in meters
-  double calculateDistance(double lat1, double lon1, double lat2, double lon2) {
-    const double earthRadius = 6371000; // meters
-
-    double dLat = _toRadians(lat2 - lat1);
-    double dLon = _toRadians(lon2 - lon1);
-
-    double a = sin(dLat / 2) * sin(dLat / 2) +
-        cos(_toRadians(lat1)) * cos(_toRadians(lat2)) *
-        sin(dLon / 2) * sin(dLon / 2);
-    
-    double c = 2 * atan2(sqrt(a), sqrt(1 - a));
-    
-    return earthRadius * c;
-  }
-
-  double _toRadians(double degrees) {
-    return degrees * pi / 180;
-  }
-
-  String getCurrentTimeISOString() {
-    final now = DateTime.now();
-    return now.toIso8601String();
-  }
-
-  // Mark attendance with current data (for both check-in and check-out)
-  Future<Map<String, dynamic>> markAttendanceWithCurrentData({
-    required double latitude,
-    required double longitude,
-    required String attendanceType,
-    String description = '',
-  }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final employeeID = prefs.getInt('employeeID') ?? 0;
-      final companyID = prefs.getInt('companyID') ?? 0;
-
-      if (employeeID == 0 || companyID == 0) {
-        throw Exception('User data not found. Please login again.');
-      }
-
-      final punchTime = getCurrentTimeISOString();
-
-      return await markAttendance(
-        employeeID: employeeID,
-        companyID: companyID,
-        latitude: latitude,
-        longitude: longitude,
-        punchTime: punchTime,
-        attendanceType: attendanceType,
-        description: description,
-      );
-    } catch (e) {
-      rethrow;
-    }
-  }
-
-  // Get Today's Attendance
-  Future<Map<String, dynamic>> getTodayAttendance() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final token = prefs.getString('token') ?? '';
-      final employeeID = prefs.getInt('employeeID') ?? 0;
-
-      if (token.isEmpty) {
-        throw Exception('Authentication token not found. Please login again.');
-      }
-
-      if (employeeID == 0) {
-        throw Exception('Employee ID not found. Please login again.');
-      }
-
-      final url = Uri.parse('${baseUrl}Attendance/Today?employeeId=$employeeID');
-
-      print('🌐 Get Today Attendance API URL: $url');
-      print('🔑 Token Present: ${token.isNotEmpty}');
-
-      final response = await http.get(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-
-      print('📡 Today Attendance Response Status: ${response.statusCode}');
-      print('📦 Today Attendance Response Body: ${response.body}');
-
-      final Map<String, dynamic> responseBody = jsonDecode(response.body);
-
-      if (response.statusCode == 200) {
+        final Map<String, dynamic> errorData = json.decode(response.body);
         return {
-          'isSuccess': responseBody['isSuccess'] ?? true,
-          'message': responseBody['message'] ?? '',
-          'data': responseBody['data'],
-          'hasCheckedIn': responseBody['data'] != null && responseBody['data']['checkInTime'] != null,
-          'checkInTime': responseBody['data'] != null ? responseBody['data']['checkInTime'] : null,
-          'hasCheckedOut': responseBody['data'] != null && responseBody['data']['checkOutTime'] != null,
-          'checkOutTime': responseBody['data'] != null ? responseBody['data']['checkOutTime'] : null,
-        };
-      } else if (response.statusCode == 401) {
-        throw Exception('Authentication failed. Please login again.');
-      } else if (response.statusCode == 404) {
-        return {
-          'isSuccess': true,
-          'message': 'No attendance record found for today',
+          'isSuccess': false,
+          'message': errorData['message'] ?? 'Bad request',
           'data': null,
-          'hasCheckedIn': false,
-          'checkInTime': null,
-          'hasCheckedOut': false,
-          'checkOutTime': null,
+          'statusCode': 400,
+        };
+      } else if (response.statusCode == 401) {
+        return {
+          'isSuccess': false,
+          'message': 'Unauthorized - Please login again',
+          'data': null,
+          'statusCode': 401,
         };
       } else {
-        throw Exception(responseBody['message'] ?? 'HTTP ${response.statusCode}: ${response.body}');
+        return {
+          'isSuccess': false,
+          'message': 'Failed to mark attendance. Status: ${response.statusCode}',
+          'data': null,
+          'statusCode': response.statusCode,
+        };
       }
-    } on http.ClientException catch (e) {
-      print('❌ Network error in getTodayAttendance: $e');
-      throw Exception('Network error: Please check your internet connection.');
-    } on FormatException catch (e) {
-      print('❌ Format error in getTodayAttendance: $e');
-      throw Exception('Invalid response format from server.');
     } catch (e) {
-      print('❌ Error in getTodayAttendance: $e');
-      rethrow;
+      print('❌ Unexpected error during attendance: $e');
+      return {
+        'isSuccess': false,
+        'message': 'Failed to mark attendance: $e',
+        'data': null,
+        'statusCode': 0,
+      };
     }
   }
 
-  // Get all geofence locations info for current company
-  Future<List<Map<String, dynamic>>> getGeofenceLocationsInfo() async {
+  // Get IP Address (placeholder implementation)
+  static Future<String> _getIPAddress() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final companyID = prefs.getInt('companyID') ?? 0;
-
-      if (companyID == 0) {
-        throw Exception('Company ID not found. Please login again.');
-      }
-
-      final List<dynamic> locations = await getAllGeofenceLocations(companyID);
-      
-      return locations.map((location) {
-        return {
-          'locationID': location['locationID'],
-          'locationName': location['locationName'],
-          'latitude': location['latitude'],
-          'longitude': location['longitude'],
-          'radius': location['radiusInMeters'],
-          'isActive': location['isActive'],
-          'address': location['locationName'],
-        };
-      }).toList();
+      return '192.168.1.1';
     } catch (e) {
-      print('❌ Error getting geofence locations info: $e');
-      rethrow;
+      return 'Unknown';
     }
+  }
+
+  // Calculate distance between two coordinates using Haversine formula
+  static double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const earthRadius = 6371000; // meters
+
+    final dLat = _toRadians(lat2 - lat1);
+    final dLon = _toRadians(lon2 - lon1);
+
+    final a = sin(dLat / 2) * sin(dLat / 2) +
+        cos(_toRadians(lat1)) * cos(_toRadians(lat2)) * sin(dLon / 2) * sin(dLon / 2);
+    
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    final distance = earthRadius * c;
+
+    return distance;
+  }
+
+  static double _toRadians(double degree) {
+    return degree * pi / 180;
+  }
+}
+
+// Response Models (keep the same)
+class GeoFenceResponse {
+  final int statusCode;
+  final String message;
+  final GeoFenceData data;
+  final List<dynamic> errors;
+  final bool isSuccess;
+  final String timestamp;
+
+  GeoFenceResponse({
+    required this.statusCode,
+    required this.message,
+    required this.data,
+    required this.errors,
+    required this.isSuccess,
+    required this.timestamp,
+  });
+
+  factory GeoFenceResponse.fromJson(Map<String, dynamic> json) {
+    return GeoFenceResponse(
+      statusCode: json['statusCode'] ?? 0,
+      message: json['message'] ?? '',
+      data: GeoFenceData.fromJson(json['data'] ?? {}),
+      errors: json['errors'] ?? [],
+      isSuccess: json['isSuccess'] ?? false,
+      timestamp: json['timestamp'] ?? '',
+    );
+  }
+}
+
+class GeoFenceData {
+  final int locationID;
+  final int companyID;
+  final String locationName;
+  final double latitude;
+  final double longitude;
+  final double radiusInMeters;
+  final bool isActive;
+  final String createdOn;
+  final String createdBy;
+  final String? updatedOn;
+  final String? updatedBy;
+
+  GeoFenceData({
+    required this.locationID,
+    required this.companyID,
+    required this.locationName,
+    required this.latitude,
+    required this.longitude,
+    required this.radiusInMeters,
+    required this.isActive,
+    required this.createdOn,
+    required this.createdBy,
+    this.updatedOn,
+    this.updatedBy,
+  });
+
+  factory GeoFenceData.fromJson(Map<String, dynamic> json) {
+    return GeoFenceData(
+      locationID: json['locationID'] ?? 0,
+      companyID: json['companyID'] ?? 0,
+      locationName: json['locationName'] ?? '',
+      latitude: (json['latitude'] ?? 0.0).toDouble(),
+      longitude: (json['longitude'] ?? 0.0).toDouble(),
+      radiusInMeters: (json['radiusInMeters'] ?? 0.0).toDouble(),
+      isActive: json['isActive'] ?? false,
+      createdOn: json['createdOn'] ?? '',
+      createdBy: json['createdBy'] ?? '',
+      updatedOn: json['updatedOn'],
+      updatedBy: json['updatedBy'],
+    );
+  }
+}
+
+class AttendanceResponse {
+  final int statusCode;
+  final String message;
+  final dynamic data;
+  final List<dynamic> errors;
+  final bool isSuccess;
+  final String timestamp;
+
+  AttendanceResponse({
+    required this.statusCode,
+    required this.message,
+    required this.data,
+    required this.errors,
+    required this.isSuccess,
+    required this.timestamp,
+  });
+
+  factory AttendanceResponse.fromJson(Map<String, dynamic> json) {
+    return AttendanceResponse(
+      statusCode: json['statusCode'] ?? 0,
+      message: json['message'] ?? '',
+      data: json['data'],
+      errors: json['errors'] ?? [],
+      isSuccess: json['isSuccess'] ?? false,
+      timestamp: json['timestamp'] ?? '',
+    );
   }
 }
